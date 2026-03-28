@@ -92,7 +92,9 @@
       "Bash(./scripts/dev.sh)",
       "Bash(lsof -ti:3000)",
       "Bash(lsof -ti:4000)",
-      "Bash(find /Users/dmk/Projects/private/authoring/packages/store-server -name *.ts -o -name *.js)"
+      "Bash(find /Users/dmk/Projects/private/authoring/packages/store-server -name *.ts -o -name *.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(bash scripts/dev.sh)"
     ]
   }
 }

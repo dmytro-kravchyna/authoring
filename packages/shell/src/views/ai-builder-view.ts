@@ -9,6 +9,7 @@
  */
 
 import type { ViewerInstance } from "@bim-ide/viewer";
+import { createColumnType, createWallType, createWindowType, createDoorType } from "@bim-ide/viewer";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -410,37 +411,36 @@ The viewer object passed to your default function has:
 ### viewer.engine — GeometryEngine
 - WASM geometry engine for extrusions, walls, etc.
 
+## Pre-injected Type ID Variables
+
+The following local variables are automatically available inside your default function — use them directly:
+- \`columnTypeId\` — ID of the default column type
+- \`wallTypeId\` — ID of the default wall type
+- \`windowTypeId\` — ID of the default window type
+- \`doorTypeId\` — ID of the default door type
+
+Default types are auto-created if they don't exist yet, so these variables are always valid.
+
 ## Existing Element Factories
 
 To create elements, build contract objects directly. Each contract needs a unique \`id\` (use \`crypto.randomUUID()\`).
 
 ### Column
 \`\`\`javascript
-// First find an existing columnType from doc.contracts
-let columnTypeId = null;
-for (const [id, c] of viewer.doc.contracts) {
-  if (c.kind === "columnType") { columnTypeId = id; break; }
-}
-
 viewer.doc.add({
   id: crypto.randomUUID(),
   kind: "column",
-  typeId: columnTypeId,
+  typeId: columnTypeId,  // pre-injected variable
   base: [x, y, z],   // position [x, ground_elevation, z]
 });
 \`\`\`
 
 ### Wall
 \`\`\`javascript
-let wallTypeId = null;
-for (const [id, c] of viewer.doc.contracts) {
-  if (c.kind === "wallType") { wallTypeId = id; break; }
-}
-
 viewer.doc.add({
   id: crypto.randomUUID(),
   kind: "wall",
-  typeId: wallTypeId,
+  typeId: wallTypeId,  // pre-injected variable
   start: [x1, y1, z1],
   end: [x2, y2, z2],
 });
@@ -491,7 +491,7 @@ viewer.doc.add({
 1. Always wrap code in a single \`\`\`javascript code block
 2. For scripting mode, always export default function(viewer) { ... }
 3. Use crypto.randomUUID() for all IDs
-4. Look up existing type IDs from viewer.doc.contracts before creating instances
+4. Use the pre-injected typeId variables (columnTypeId, wallTypeId, windowTypeId, doorTypeId) directly
 5. Geometry syncs automatically when contracts are added/updated — no manual sync needed
 6. Coordinates are [x, y, z] where y is UP (elevation)
 7. Do NOT use TypeScript syntax — only plain JavaScript
@@ -586,7 +586,7 @@ async function callClaudeAPI(
         "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: "claude-opus-4-6",
         max_tokens: 4096,
         system: getSystemPrompt(),
         messages: apiMessages,
@@ -620,7 +620,7 @@ async function callClaudeWithSystemPrompt(
       "anthropic-dangerous-direct-browser-access": "true",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-6",
+      model: "claude-opus-4-6",
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: "user", content: userContent }],
@@ -711,20 +711,84 @@ interface LoadResult {
   newKinds: string[];
 }
 
+/**
+ * Ensure default element types exist in the document and return
+ * resolved typeId variables. Mirrors packages/viewer/src/ai/executor.ts.
+ */
+function ensureDefaultTypes(viewer: ViewerInstance): Record<string, string> {
+  const typeFactories: Record<string, () => any> = {
+    columnType: createColumnType,
+    wallType: createWallType,
+    windowType: createWindowType,
+    doorType: createDoorType,
+  };
+
+  for (const [kind, factory] of Object.entries(typeFactories)) {
+    const exists = [...viewer.doc.contracts.values()].some((c: any) => c.kind === kind);
+    if (!exists) {
+      const typeContract = factory();
+      viewer.doc.add(typeContract);
+      console.log(`[AI Builder] Auto-created missing ${kind}: ${typeContract.id}`);
+    }
+  }
+
+  const typeIds: Record<string, string> = {};
+  for (const [id, c] of viewer.doc.contracts) {
+    const kind = (c as any).kind as string;
+    if (kind.endsWith("Type")) {
+      const varName = kind.replace(/Type$/, "") + "TypeId";
+      if (!typeIds[varName]) {
+        typeIds[varName] = id;
+      }
+    }
+  }
+
+  console.log("[AI Builder] Resolved typeIds:", typeIds);
+  return typeIds;
+}
+
 async function loadGeneratedCode(
   code: string,
   viewer: ViewerInstance,
   session: Session
 ): Promise<LoadResult> {
-  // Strip any remaining TS annotations (AI should produce JS, but just in case)
+  console.log("[AI Builder] Raw generated code:\n", code);
+
+  // Strip TS-only syntax (AI should produce JS, but just in case).
+  // NOTE: We intentionally do NOT strip generic `: Type` annotations
+  // because that regex also destroys valid JS like `typeId: columnTypeId,`.
   let jsCode = code;
   jsCode = jsCode
-    .replace(/:\s*\w+(\[\])?\s*(?=[,;=\)\n\{])/g, "")
     .replace(/\binterface\s+\w+\s*\{[^}]*\}/g, "")
     .replace(/\btype\s+\w+\s*=\s*[^;]+;/g, "")
     .replace(/<\w+>/g, "")
     .replace(/\bas\s+\w+/g, "")
     .replace(/import\s+type\s+[^;]+;/g, "");
+
+  // Ensure default types exist and resolve typeId variables
+  console.log("[AI Builder] Ensuring default types exist...");
+  const typeIds = ensureDefaultTypes(viewer);
+
+  // Inject typeId declarations inside the default function body so bare
+  // references like `columnTypeId` resolve correctly.
+  const typeIdDeclarations = Object.entries(typeIds)
+    .map(([name, id]) => `const ${name} = "${id}";`)
+    .join("\n  ");
+
+  const injected = jsCode.replace(
+    /export\s+default\s+function\s*\([^)]*\)\s*\{/,
+    (match) => `${match}\n  // Auto-injected typeId variables\n  ${typeIdDeclarations}\n`
+  );
+
+  // Also handle arrow function variant: export default (viewer) => {
+  const finalCode = injected === jsCode
+    ? jsCode.replace(
+        /export\s+default\s*\([^)]*\)\s*=>\s*\{/,
+        (match) => `${match}\n  // Auto-injected typeId variables\n  ${typeIdDeclarations}\n`
+      )
+    : injected;
+
+  console.log("[AI Builder] Final code to execute:\n", finalCode);
 
   // Track new contracts
   const newContractIds: string[] = [];
@@ -736,7 +800,7 @@ async function loadGeneratedCode(
   const newKinds: string[] = [];
 
   // Create a blob URL and dynamically import
-  const blob = new Blob([jsCode], { type: "text/javascript" });
+  const blob = new Blob([finalCode], { type: "text/javascript" });
   const url = URL.createObjectURL(blob);
 
   try {
@@ -744,23 +808,33 @@ async function loadGeneratedCode(
 
     // Mode A: default export is a function → scripting mode
     if (typeof module.default === "function") {
+      console.log("[AI Builder] Executing default function (Mode A)...");
       await module.default(viewer);
+      console.log("[AI Builder] Execution complete. Contracts added:", newContractIds.length);
     }
     // Mode B: element definitions
     if (module.elementDefinition) {
+      console.log("[AI Builder] Registering element definition (Mode B):", module.elementDefinition.kind);
       viewer.registerElement(module.elementDefinition);
       newKinds.push(module.elementDefinition.kind);
     }
     if (module.typeDefinition) {
+      console.log("[AI Builder] Registering type definition (Mode B):", module.typeDefinition.kind);
       viewer.registerElement(module.typeDefinition);
       newKinds.push(module.typeDefinition.kind);
     }
     // Mode B alt: default export with .kind
     if (module.default && typeof module.default !== "function" && module.default.kind) {
+      console.log("[AI Builder] Registering default element (Mode B alt):", module.default.kind);
       viewer.registerElement(module.default);
       newKinds.push(module.default.kind);
     }
 
+  } catch (err) {
+    console.error("[AI Builder] Code execution failed:", err);
+    console.error("[AI Builder] Available typeIds were:", typeIds);
+    console.error("[AI Builder] Code was:\n", finalCode);
+    throw err;
   } finally {
     URL.revokeObjectURL(url);
     viewer.doc.onAdded.remove(handler);

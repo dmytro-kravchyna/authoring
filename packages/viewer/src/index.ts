@@ -479,3 +479,9 @@ export { TypesTab } from "./ui/types-tab";
 export { LevelsTab } from "./ui/levels-tab";
 export { MaterialsTab } from "./ui/materials-tab";
 export { PropertiesPanel } from "./ui/properties";
+
+// Factory functions for creating default type contracts
+export { createColumnType } from "./elements/column-type";
+export { createWallType } from "./elements/wall-type";
+export { createWindowType } from "./elements/window-type";
+export { createDoorType } from "./elements/door-type";
