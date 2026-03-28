@@ -9,6 +9,8 @@ import { createWallType } from "../elements/wall-type";
 import { createColumnType } from "../elements/column-type";
 import { createWindowType } from "../elements/window-type";
 import { createDoorType } from "../elements/door-type";
+import type { TextureRenderer } from "./texture-renderer";
+import type { GisLayer3d } from "../gis/gis-layer-3d";
 
 export interface ExecutionResult {
   success: boolean;
@@ -28,10 +30,12 @@ export function extractSummary(response: string): string {
   return response.replace(/```[\s\S]*?```/g, "").trim();
 }
 
-export function execute(
+export async function execute(
   code: string,
-  doc: BimDocument
-): ExecutionResult {
+  doc: BimDocument,
+  textureRenderer?: TextureRenderer,
+  gisLayer?: GisLayer3d,
+): Promise<ExecutionResult> {
   const createdIds: string[] = [];
   const removedIds: string[] = [];
 
@@ -42,8 +46,8 @@ export function execute(
   doc.onRemoved.add(onRemove);
 
   try {
+    // Auto-create missing default types so generated code always has valid typeId variables
     doc.transaction(() => {
-      // Auto-create missing default types so generated code always has valid typeId variables
       const typeFactories: Record<string, () => any> = {
         wallType: createWallType,
         columnType: createColumnType,
@@ -54,46 +58,53 @@ export function execute(
         const exists = [...doc.contracts.values()].some(c => c.kind === kind);
         if (!exists) doc.add(factory());
       }
-
-      // Resolve first type ID of each kind for convenience variables
-      const typeIds: Record<string, string | undefined> = {};
-      for (const [id, c] of doc.contracts) {
-        const kind = c.kind;
-        const varName = kind.replace(/Type$/, "") + "TypeId";
-        if (kind.endsWith("Type") && !typeIds[varName]) {
-          typeIds[varName] = id;
-        }
-      }
-
-      const fn = new Function(
-        "doc",
-        "createWall",
-        "createColumn",
-        "createFloor",
-        "createWindow",
-        "createDoor",
-        "THREE",
-        "wallTypeId",
-        "columnTypeId",
-        "windowTypeId",
-        "doorTypeId",
-        code
-      );
-
-      fn(
-        doc,
-        createWall,
-        createColumn,
-        createFloor,
-        createWindow,
-        createDoor,
-        THREE,
-        typeIds["wallTypeId"],
-        typeIds["columnTypeId"],
-        typeIds["windowTypeId"],
-        typeIds["doorTypeId"]
-      );
     });
+
+    // Resolve first type ID of each kind for convenience variables
+    const typeIds: Record<string, string | undefined> = {};
+    for (const [id, c] of doc.contracts) {
+      const kind = c.kind;
+      const varName = kind.replace(/Type$/, "") + "TypeId";
+      if (kind.endsWith("Type") && !typeIds[varName]) {
+        typeIds[varName] = id;
+      }
+    }
+
+    // Wrap code in async IIFE to support await for texture rendering
+    const wrappedCode = `return (async () => { ${code} })()`;
+
+    const fn = new Function(
+      "doc",
+      "createWall",
+      "createColumn",
+      "createFloor",
+      "createWindow",
+      "createDoor",
+      "THREE",
+      "wallTypeId",
+      "columnTypeId",
+      "windowTypeId",
+      "doorTypeId",
+      "textureRenderer",
+      "gisLayer",
+      wrappedCode
+    );
+
+    await fn(
+      doc,
+      createWall,
+      createColumn,
+      createFloor,
+      createWindow,
+      createDoor,
+      THREE,
+      typeIds["wallTypeId"],
+      typeIds["columnTypeId"],
+      typeIds["windowTypeId"],
+      typeIds["doorTypeId"],
+      textureRenderer,
+      gisLayer,
+    );
 
     return { success: true, createdIds, removedIds };
   } catch (e: any) {

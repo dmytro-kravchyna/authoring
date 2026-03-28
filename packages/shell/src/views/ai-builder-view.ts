@@ -632,10 +632,47 @@ export default function(viewer) {
 }
 \`\`\`
 
+## Photo-Realistic Texture Rendering
+
+The viewer has a \`textureRenderer\` for generating photorealistic images of the current scene via Google Gemini AI:
+
+\`\`\`javascript
+// Capture current 3D scene and transform into a photorealistic architectural image
+await viewer.textureRenderer.render(customPrompt)  // Returns data URL string or null
+viewer.textureRenderer.discard()                    // Remove the overlay image
+viewer.textureRenderer.download(filename)           // Download the overlay as PNG
+\`\`\`
+
+When the user asks for photorealistic rendering, realistic visualization, or texture generation:
+1. First create any BIM elements if needed using \`viewer.doc.transaction(() => { ... })\`
+2. Then call \`await viewer.textureRenderer.render()\` — optionally pass a custom prompt to guide the style
+3. The result is automatically displayed as an overlay on the 3D viewport
+
+Since texture rendering is async, the default function MUST be async:
+\`\`\`javascript
+export default async function(viewer) {
+  viewer.doc.transaction(() => { /* create elements */ });
+  await viewer.textureRenderer.render("modern building with warm lighting");
+}
+\`\`\`
+
+## GIS / 3D Tiles Layer
+
+The viewer has a \`gisLayer\` for loading Cesium Ion 3D map tiles:
+
+\`\`\`javascript
+viewer.gisLayer.latitude = 40.7016;          // Set latitude (decimal degrees)
+viewer.gisLayer.longitude = -73.9943;        // Set longitude (decimal degrees)
+viewer.gisLayer.rotation = 0;                // Set rotation (radians)
+viewer.gisLayer.init(assetId)                // Initialize with a Cesium Ion asset ID (default: "2275207")
+viewer.gisLayer.enabled = true;              // Show/hide the 3D tiles layer
+viewer.gisLayer.updateMapPosition();         // Apply lat/lon/rotation changes
+\`\`\`
+
 ## Important Rules
 
 1. Always wrap code in a single \`\`\`javascript code block
-2. For scripting mode, always export default function(viewer) { ... }
+2. For scripting mode, always export default function(viewer) { ... } (use async if calling textureRenderer)
 3. Use crypto.randomUUID() for all IDs
 4. Use the pre-injected typeId variables (columnTypeId, wallTypeId, windowTypeId, doorTypeId) directly
 5. Geometry syncs automatically when contracts are added/updated — no manual sync needed
@@ -965,14 +1002,14 @@ async function loadGeneratedCode(
     .join("\n  ");
 
   const injected = jsCode.replace(
-    /export\s+default\s+function\s*\([^)]*\)\s*\{/,
+    /export\s+default\s+(?:async\s+)?function\s*\([^)]*\)\s*\{/,
     (match) => `${match}\n  // Auto-injected typeId variables\n  ${typeIdDeclarations}\n`
   );
 
-  // Also handle arrow function variant: export default (viewer) => {
+  // Also handle arrow function variant: export default (viewer) => { or export default async (viewer) => {
   const finalCode = injected === jsCode
     ? jsCode.replace(
-        /export\s+default\s*\([^)]*\)\s*=>\s*\{/,
+        /export\s+default\s+(?:async\s+)?\([^)]*\)\s*=>\s*\{/,
         (match) => `${match}\n  // Auto-injected typeId variables\n  ${typeIdDeclarations}\n`
       )
     : injected;

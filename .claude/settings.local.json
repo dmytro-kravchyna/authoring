@@ -113,7 +113,8 @@
       "Bash(git pull:*)",
       "Bash(git stash:*)",
       "Bash(chmod +x /Users/dmk/Projects/private/authoring/scripts/prod.sh)",
-      "WebFetch(domain:authoring-eight.vercel.app)"
+      "WebFetch(domain:authoring-eight.vercel.app)",
+      "Bash(xargs ls:*)"
     ]
   }
 }
