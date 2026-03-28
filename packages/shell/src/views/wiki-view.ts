@@ -268,6 +268,7 @@ export function createWikiView(container: HTMLElement) {
       navArea.appendChild(catEl);
 
       const catItems = document.createElement("div");
+      catItems.className = "wiki-nav-items";
       for (const article of filtered) {
         const item = document.createElement("div");
         item.className = "wiki-nav-item";

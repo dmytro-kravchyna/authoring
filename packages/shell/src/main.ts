@@ -75,17 +75,18 @@ async function bootstrap() {
   viewer.onStatusChanged = (msg) => statusBar.updateItem("status", msg);
   statusBar.updateItem("status", "Ready");
 
-  // Wire tool name to status bar
-  viewer.toolMgr.onToolChanged = (name) => {
-    statusBar.updateItem("tool", name ? `Tool: ${name}` : "");
-  };
-
   // ── Extension Host ──
   const extensionHost = new ExtensionHost(viewer);
 
   // ── Floating toolbar ──
   const toolbar = new FloatingToolbar(viewer);
   editorArea.appendChild(toolbar.element);
+
+  // Wire tool name to status bar and toolbar highlight (after toolbar creation)
+  viewer.toolMgr.onToolChanged = (name: string | null) => {
+    statusBar.updateItem("tool", name ? `Tool: ${name}` : "");
+    toolbar.highlightTool(name);
+  };
 
   // ── Wire selection → right sidebar properties ──
   viewer.onSelectionChanged = (contract) => {

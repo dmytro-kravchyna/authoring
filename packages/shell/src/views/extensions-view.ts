@@ -15,8 +15,13 @@ interface ExtensionInfo {
   rating: number;
 }
 
+interface InstalledExtensionInfo extends ExtensionInfo {
+  enabled: boolean;
+  bundleUrl: string;
+}
+
 // In-memory list of installed extensions
-const installedExtensions = new Map<string, ExtensionInfo>();
+const installedExtensions = new Map<string, InstalledExtensionInfo>();
 
 // Store server URL (configurable)
 const STORE_URL = "http://localhost:4000/api";
@@ -75,7 +80,7 @@ export function createExtensionsView(container: HTMLElement, extensionHost?: Ext
             showEmpty(listArea, "No extensions found.");
           } else {
             for (const ext of extensions) {
-              listArea.appendChild(createExtensionCard(ext, false, extensionHost));
+              listArea.appendChild(createMarketplaceCard(ext, extensionHost));
             }
           }
           return;
@@ -92,7 +97,7 @@ export function createExtensionsView(container: HTMLElement, extensionHost?: Ext
         showEmpty(listArea, "No extensions installed.");
       } else {
         for (const ext of installedExtensions.values()) {
-          listArea.appendChild(createExtensionCard(ext, true, extensionHost));
+          listArea.appendChild(createInstalledCard(ext, extensionHost));
         }
       }
     }
@@ -105,15 +110,106 @@ export function createExtensionsView(container: HTMLElement, extensionHost?: Ext
   renderList();
 }
 
-function createExtensionCard(ext: ExtensionInfo, installed: boolean, extensionHost?: ExtensionHost): HTMLElement {
+function createMarketplaceCard(ext: ExtensionInfo, extensionHost?: ExtensionHost): HTMLElement {
   const card = document.createElement("div");
   card.className = "extension-card";
 
+  card.appendChild(createCardIcon());
+  card.appendChild(createCardInfo(ext));
+
+  const btn = document.createElement("button");
+  const isInstalled = installedExtensions.has(ext.id);
+  btn.className = isInstalled ? "btn-secondary" : "btn-primary";
+  btn.textContent = isInstalled ? "Installed" : "Install";
+  btn.disabled = isInstalled;
+  btn.style.cssText = "align-self: center; flex-shrink: 0;";
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    try {
+      const bundleUrl = `${STORE_URL}/extensions/${ext.id}/download`;
+      if (extensionHost) {
+        await extensionHost.loadExtension(
+          { id: ext.id, name: ext.name, version: ext.version, description: ext.description, author: ext.author, main: bundleUrl },
+          bundleUrl
+        );
+      }
+      installedExtensions.set(ext.id, { ...ext, enabled: true, bundleUrl });
+      btn.textContent = "Installed";
+      btn.className = "btn-secondary";
+      btn.disabled = true;
+    } catch (err) {
+      console.error(`Failed to install ${ext.name}:`, err);
+      btn.textContent = "Error";
+      setTimeout(() => { btn.textContent = "Install"; }, 2000);
+    }
+  });
+  card.appendChild(btn);
+
+  return card;
+}
+
+function createInstalledCard(ext: InstalledExtensionInfo, extensionHost?: ExtensionHost): HTMLElement {
+  const card = document.createElement("div");
+  card.className = `extension-card${ext.enabled ? "" : " extension-disabled"}`;
+
+  card.appendChild(createCardIcon());
+  card.appendChild(createCardInfo(ext));
+
+  const actions = document.createElement("div");
+  actions.style.cssText = "display: flex; gap: 4px; align-self: center; flex-shrink: 0;";
+
+  // Enable/Disable toggle
+  const toggleBtn = document.createElement("button");
+  toggleBtn.className = ext.enabled ? "btn-secondary" : "btn-primary";
+  toggleBtn.textContent = ext.enabled ? "Disable" : "Enable";
+  toggleBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (ext.enabled) {
+      if (extensionHost) {
+        await extensionHost.disableExtension(ext.id, ext.bundleUrl);
+      }
+      ext.enabled = false;
+      toggleBtn.textContent = "Enable";
+      toggleBtn.className = "btn-primary";
+      card.classList.add("extension-disabled");
+    } else {
+      if (extensionHost) {
+        await extensionHost.enableExtension(ext.id);
+      }
+      ext.enabled = true;
+      toggleBtn.textContent = "Disable";
+      toggleBtn.className = "btn-secondary";
+      card.classList.remove("extension-disabled");
+    }
+  });
+  actions.appendChild(toggleBtn);
+
+  // Uninstall button
+  const uninstallBtn = document.createElement("button");
+  uninstallBtn.className = "btn-secondary";
+  uninstallBtn.textContent = "Uninstall";
+  uninstallBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (ext.enabled && extensionHost) {
+      await extensionHost.unloadExtension(ext.id);
+    }
+    installedExtensions.delete(ext.id);
+    card.remove();
+  });
+  actions.appendChild(uninstallBtn);
+
+  card.appendChild(actions);
+  return card;
+}
+
+function createCardIcon(): HTMLElement {
   const icon = document.createElement("div");
   icon.className = "extension-card-icon";
   icon.innerHTML = `<i class="codicon codicon-extensions"></i>`;
-  card.appendChild(icon);
+  return icon;
+}
 
+function createCardInfo(ext: ExtensionInfo): HTMLElement {
   const info = document.createElement("div");
   info.className = "extension-card-info";
 
@@ -133,45 +229,7 @@ function createExtensionCard(ext: ExtensionInfo, installed: boolean, extensionHo
   if (ext.downloads > 0) meta.textContent += ` | ${ext.downloads} downloads`;
   info.appendChild(meta);
 
-  card.appendChild(info);
-
-  // Install/Uninstall button
-  const btn = document.createElement("button");
-  btn.className = installed ? "btn-secondary" : "btn-primary";
-  btn.textContent = installed ? "Uninstall" : "Install";
-  btn.style.cssText = "align-self: center; flex-shrink: 0;";
-  btn.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    if (installed) {
-      if (extensionHost) {
-        await extensionHost.unloadExtension(ext.id);
-      }
-      installedExtensions.delete(ext.id);
-      btn.textContent = "Install";
-      btn.className = "btn-primary";
-    } else {
-      try {
-        if (extensionHost) {
-          const bundleUrl = `${STORE_URL}/extensions/${ext.id}/download`;
-          await extensionHost.loadExtension(
-            { id: ext.id, name: ext.name, version: ext.version, description: ext.description, author: ext.author, main: bundleUrl },
-            bundleUrl
-          );
-        }
-        installedExtensions.set(ext.id, ext);
-        btn.textContent = "Installed";
-        btn.className = "btn-secondary";
-        btn.disabled = true;
-      } catch (err) {
-        console.error(`Failed to install ${ext.name}:`, err);
-        btn.textContent = "Error";
-        setTimeout(() => { btn.textContent = "Install"; }, 2000);
-      }
-    }
-  });
-  card.appendChild(btn);
-
-  return card;
+  return info;
 }
 
 function showEmpty(container: HTMLElement, message: string) {
@@ -236,6 +294,6 @@ function showSampleExtensions(container: HTMLElement, extensionHost?: ExtensionH
   container.appendChild(notice);
 
   for (const ext of samples) {
-    container.appendChild(createExtensionCard(ext, false, extensionHost));
+    container.appendChild(createMarketplaceCard(ext, extensionHost));
   }
 }
