@@ -1,0 +1,137 @@
+import * as THREE from "three";
+import type { BimDocument } from "../core/document";
+import { createWall } from "../elements/wall";
+import { createColumn } from "../elements/column";
+import { createFloor } from "../elements/floor";
+import { createWindow } from "../elements/window";
+import { createDoor } from "../elements/door";
+import { createWallType } from "../elements/wall-type";
+import { createColumnType } from "../elements/column-type";
+import { createWindowType } from "../elements/window-type";
+import { createDoorType } from "../elements/door-type";
+import type { TextureRenderer } from "./texture-renderer";
+import type { TextureGenerator } from "./texture-generator";
+import type { GisLayer3d } from "../gis/gis-layer-3d";
+
+export interface ExecutionResult {
+  success: boolean;
+  createdIds: string[];
+  removedIds: string[];
+  error?: string;
+}
+
+/** Extract the first code block from a markdown response. */
+export function extractCode(response: string): string | null {
+  const match = response.match(/```(?:typescript|ts|js|javascript)?\s*\n([\s\S]*?)```/);
+  return match ? match[1].trim() : null;
+}
+
+/** Extract plain text summary (everything outside code blocks). */
+export function extractSummary(response: string): string {
+  return response.replace(/```[\s\S]*?```/g, "").trim();
+}
+
+export async function execute(
+  code: string,
+  doc: BimDocument,
+  textureRenderer?: TextureRenderer,
+  gisLayer?: GisLayer3d,
+  textureGenerator?: TextureGenerator,
+): Promise<ExecutionResult> {
+  const createdIds: string[] = [];
+  const removedIds: string[] = [];
+
+  // Listen for additions/removals during execution
+  const onAdd = (contract: { id: string }) => createdIds.push(contract.id);
+  const onRemove = (id: string) => removedIds.push(id);
+  doc.onAdded.add(onAdd);
+  doc.onRemoved.add(onRemove);
+
+  try {
+    // Auto-create missing default types so generated code always has valid typeId variables
+    doc.transaction(() => {
+      const typeFactories: Record<string, () => any> = {
+        wallType: createWallType,
+        columnType: createColumnType,
+        windowType: createWindowType,
+        doorType: createDoorType,
+      };
+      for (const [kind, factory] of Object.entries(typeFactories)) {
+        const exists = [...doc.contracts.values()].some(c => c.kind === kind);
+        if (!exists) doc.add(factory());
+      }
+    });
+
+    // Resolve first type ID of each kind for convenience variables
+    const typeIds: Record<string, string | undefined> = {};
+    for (const [id, c] of doc.contracts) {
+      const kind = c.kind;
+      const varName = kind.replace(/Type$/, "") + "TypeId";
+      if (kind.endsWith("Type") && !typeIds[varName]) {
+        typeIds[varName] = id;
+      }
+    }
+
+    // Wrap code in async IIFE to support await for texture rendering
+    const wrappedCode = `return (async () => { ${code} })()`;
+
+    const fn = new Function(
+      "doc",
+      "createWall",
+      "createColumn",
+      "createFloor",
+      "createWindow",
+      "createDoor",
+      "createWallType",
+      "createColumnType",
+      "createWindowType",
+      "createDoorType",
+      "THREE",
+      "wallTypeId",
+      "columnTypeId",
+      "windowTypeId",
+      "doorTypeId",
+      "textureRenderer",
+      "gisLayer",
+      "textureGenerator",
+      "generateTexture",
+      wrappedCode
+    );
+
+    // Helper: generate texture and apply to a material contract
+    const generateTexture = textureGenerator
+      ? async (prompt: string, materialId: string) => {
+          await textureGenerator.generateAndApply(prompt, materialId, doc);
+        }
+      : undefined;
+
+    await fn(
+      doc,
+      createWall,
+      createColumn,
+      createFloor,
+      createWindow,
+      createDoor,
+      createWallType,
+      createColumnType,
+      createWindowType,
+      createDoorType,
+      THREE,
+      typeIds["wallTypeId"],
+      typeIds["columnTypeId"],
+      typeIds["windowTypeId"],
+      typeIds["doorTypeId"],
+      textureRenderer,
+      gisLayer,
+      textureGenerator,
+      generateTexture,
+    );
+
+    return { success: true, createdIds, removedIds };
+  } catch (e: any) {
+    return { success: false, createdIds, removedIds, error: e.message };
+  } finally {
+    doc.onAdded.remove(onAdd);
+    doc.onRemoved.remove(onRemove);
+  }
+}

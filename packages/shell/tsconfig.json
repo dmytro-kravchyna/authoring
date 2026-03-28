@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@bim-ide/viewer": ["../viewer/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}
