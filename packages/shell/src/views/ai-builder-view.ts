@@ -222,6 +222,14 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
 
       const code = extractCode(response.content);
 
+      if (response.truncated && code) {
+        addAssistantMessage(
+          "The generated code was truncated because it exceeded the token limit. " +
+          "Try simplifying your request or breaking it into smaller steps."
+        );
+        return;
+      }
+
       if (code) {
         addAssistantMessage("Generated code. Loading into the viewer...");
 
@@ -413,6 +421,12 @@ Export a default function that receives the viewer object:
 \`\`\`javascript
 export default function(viewer) {
   // your code here
+}
+\`\`\`
+If you use \`await\` anywhere in the function body, you MUST declare it async:
+\`\`\`javascript
+export default async function(viewer) {
+  // your code with await calls
 }
 \`\`\`
 
@@ -699,7 +713,7 @@ viewer.gisLayer.updateMapPosition();         // Apply lat/lon/rotation changes
 ## Important Rules
 
 1. Always wrap code in a single \`\`\`javascript code block
-2. For scripting mode, always export default function(viewer) { ... } (use async if calling textureRenderer)
+2. For scripting mode, export default function(viewer) { ... }. If you use \`await\` anywhere, you MUST declare it: export default async function(viewer) { ... }
 3. Use crypto.randomUUID() for all IDs
 4. Use the pre-injected typeId variables (columnTypeId, wallTypeId, windowTypeId, doorTypeId) directly
 5. Geometry syncs automatically when contracts are added/updated — no manual sync needed
@@ -810,7 +824,7 @@ Rules:
 async function callClaudeAPI(
   apiKey: string,
   history: ChatMessage[]
-): Promise<{ content: string; error?: string }> {
+): Promise<{ content: string; error?: string; truncated?: boolean }> {
   try {
     // Build messages from history (skip the welcome message which is index 0)
     const apiMessages = history
@@ -832,7 +846,7 @@ async function callClaudeAPI(
       },
       body: JSON.stringify({
         model: "claude-opus-4-6",
-        max_tokens: 4096,
+        max_tokens: 16384,
         system: getSystemPrompt(),
         messages: apiMessages,
       }),
@@ -845,7 +859,8 @@ async function callClaudeAPI(
 
     const data = await res.json();
     const text = data.content?.[0]?.text ?? "";
-    return { content: text };
+    const truncated = data.stop_reason === "max_tokens";
+    return { content: text, truncated };
   } catch (err: any) {
     return { content: "", error: err.message };
   }
@@ -866,7 +881,7 @@ async function callClaudeWithSystemPrompt(
     },
     body: JSON.stringify({
       model: "claude-opus-4-6",
-      max_tokens: 4096,
+      max_tokens: 16384,
       system: systemPrompt,
       messages: [{ role: "user", content: userContent }],
     }),
@@ -972,6 +987,31 @@ function extractCode(response: string): string | null {
   return match ? match[1].trim() : null;
 }
 
+function isCodeTruncated(code: string): boolean {
+  let braceDepth = 0;
+  let inString = false;
+  let stringChar = "";
+  let escaped = false;
+
+  for (const ch of code) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\") { escaped = true; continue; }
+    if (inString) {
+      if (ch === stringChar) inString = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      inString = true;
+      stringChar = ch;
+      continue;
+    }
+    if (ch === "{") braceDepth++;
+    if (ch === "}") braceDepth--;
+  }
+
+  return braceDepth > 0;
+}
+
 interface LoadResult {
   newContractIds: string[];
   newKinds: string[];
@@ -1031,6 +1071,13 @@ async function loadGeneratedCode(
     .replace(/\bas\s+\w+/g, "")
     .replace(/import\s+type\s+[^;]+;/g, "");
 
+  if (isCodeTruncated(jsCode)) {
+    throw new Error(
+      "The generated code appears to be truncated (unbalanced braces). " +
+      "Try simplifying your request or breaking it into smaller steps."
+    );
+  }
+
   // Ensure default types exist and resolve typeId variables
   console.log("[AI Builder] Ensuring default types exist...");
   const typeIds = ensureDefaultTypes(viewer);
@@ -1056,6 +1103,40 @@ async function loadGeneratedCode(
 
   console.log("[AI Builder] Final code to execute:\n", finalCode);
 
+  // Auto-fix: if the default function uses `await` but isn't declared async, add async.
+  let executableCode = finalCode;
+  if (/export\s+default\s+function\s*\(/.test(executableCode) &&
+      !/export\s+default\s+async\s+function/.test(executableCode)) {
+    const funcMatch = executableCode.match(/export\s+default\s+function\s*\([^)]*\)\s*\{/);
+    if (funcMatch) {
+      const funcStart = executableCode.indexOf(funcMatch[0]);
+      const bodyAfter = executableCode.slice(funcStart + funcMatch[0].length);
+      if (/\bawait\b/.test(bodyAfter)) {
+        console.log("[AI Builder] Auto-fixing: adding async to default function that uses await");
+        executableCode = executableCode.replace(
+          /export\s+default\s+function\s*\(/,
+          "export default async function("
+        );
+      }
+    }
+  }
+  // Also handle arrow function variant
+  if (/export\s+default\s+\(/.test(executableCode) &&
+      !/export\s+default\s+async\s+\(/.test(executableCode)) {
+    const arrowMatch = executableCode.match(/export\s+default\s+\([^)]*\)\s*=>\s*\{/);
+    if (arrowMatch) {
+      const arrowStart = executableCode.indexOf(arrowMatch[0]);
+      const bodyAfter = executableCode.slice(arrowStart + arrowMatch[0].length);
+      if (/\bawait\b/.test(bodyAfter)) {
+        console.log("[AI Builder] Auto-fixing: adding async to default arrow function that uses await");
+        executableCode = executableCode.replace(
+          /export\s+default\s+\(/,
+          "export default async ("
+        );
+      }
+    }
+  }
+
   // Track new contracts
   const newContractIds: string[] = [];
   const handler = (contract: any) => {
@@ -1066,7 +1147,7 @@ async function loadGeneratedCode(
   const newKinds: string[] = [];
 
   // Create a blob URL and dynamically import
-  const blob = new Blob([finalCode], { type: "text/javascript" });
+  const blob = new Blob([executableCode], { type: "text/javascript" });
   const url = URL.createObjectURL(blob);
 
   try {
@@ -1099,7 +1180,7 @@ async function loadGeneratedCode(
   } catch (err) {
     console.error("[AI Builder] Code execution failed:", err);
     console.error("[AI Builder] Available typeIds were:", typeIds);
-    console.error("[AI Builder] Code was:\n", finalCode);
+    console.error("[AI Builder] Code was:\n", executableCode);
     throw err;
   } finally {
     URL.revokeObjectURL(url);
