@@ -144,6 +144,21 @@ export class ExtensionHost {
         return viewer.scene;
       },
 
+      selection: {
+        getAll() {
+          return viewer.selectTool.getSelectedContractsAll();
+        },
+        getIds() {
+          return viewer.selectTool.getSelectedIds();
+        },
+        getFirst() {
+          return viewer.selectTool.getSelectedContract();
+        },
+        clear() {
+          viewer.selectTool.clearSelection();
+        },
+      },
+
       editor: {
         registerElement(def) {
           // Wrap generateGeometry so extensions receive THREE as `engine`

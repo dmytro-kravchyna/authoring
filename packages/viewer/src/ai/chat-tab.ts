@@ -1,12 +1,19 @@
 import type { BimDocument } from "../core/document";
 import { getApiKey, setApiKey, sendMessage, type Message } from "./claude-client";
 import { buildSystemPrompt } from "./system-prompt";
-import { execute, extractCode, extractSummary } from "./executor";
+import { execute, extractCode, extractSummary, type ExecutionResult, type SelectionAPI } from "./executor";
 import { SessionTracker } from "./session-tracker";
 import { bundleSession } from "./bundler";
 import { TextureRenderer } from "./texture-renderer";
 import type { TextureGenerator } from "./texture-generator";
 import type { GisLayer3d } from "../gis/gis-layer-3d";
+import { interceptAndAugment, type ContributionIntent } from "./prompt-interceptor";
+import type { Tool } from "../tools/tool-manager";
+
+export interface ToolRegistrationHost {
+  registerTool(tool: Tool, label: string, category?: "create" | "edit"): void;
+  unregisterTool(tool: Tool): void;
+}
 
 interface ChatEntry {
   role: "user" | "assistant" | "system";
@@ -25,17 +32,24 @@ export class AiChatTab {
   private textureRenderer: TextureRenderer;
   private textureGenerator: TextureGenerator;
   private gisLayer: GisLayer3d;
+  private toolHost: ToolRegistrationHost | null;
+  private selectionApi: SelectionAPI;
+  private registeredTools: Tool[] = [];
 
   constructor(
     doc: BimDocument,
     textureRenderer: TextureRenderer,
     textureGenerator: TextureGenerator,
     gisLayer: GisLayer3d,
+    toolHost?: ToolRegistrationHost,
+    selection?: SelectionAPI,
   ) {
     this.doc = doc;
     this.textureRenderer = textureRenderer;
     this.textureGenerator = textureGenerator;
     this.gisLayer = gisLayer;
+    this.toolHost = toolHost ?? null;
+    this.selectionApi = selection ?? { getAll: () => [], getIds: () => [], getFirst: () => null, clear: () => {} };
   }
 
   render(container: HTMLElement) {
@@ -118,6 +132,13 @@ export class AiChatTab {
     clearBtn.textContent = "Clear";
     clearBtn.className = "ai-chat-clear";
     clearBtn.addEventListener("click", () => {
+      // Unregister tools created during this session
+      if (this.toolHost) {
+        for (const tool of this.registeredTools) {
+          this.toolHost.unregisterTool(tool);
+        }
+      }
+      this.registeredTools = [];
       this.history = [];
       this.messages = [];
       this.tracker.clear();
@@ -247,16 +268,19 @@ export class AiChatTab {
     this.isBusy = true;
     textarea.value = "";
 
-    // Add user message
+    // Intercept and classify intent, augment prompt for tool/command contributions
+    const { augmented, intent } = interceptAndAugment(text);
+
+    // Add user message (display original text, send augmented to AI)
     this.history.push({ role: "user", text });
-    this.messages.push({ role: "user", content: text });
+    this.messages.push({ role: "user", content: augmented });
     this.renderMessages(messagesArea);
     messagesArea.scrollTop = messagesArea.scrollHeight;
 
     // Show loading
     const loading = document.createElement("div");
     loading.className = "ai-chat-msg ai-chat-msg-system";
-    loading.textContent = "Thinking...";
+    loading.textContent = intent !== "action" ? `Generating ${intent} definition...` : "Thinking...";
     messagesArea.appendChild(loading);
     messagesArea.scrollTop = messagesArea.scrollHeight;
 
@@ -273,11 +297,21 @@ export class AiChatTab {
       let errorMsg = "";
 
       if (code) {
-        const result = await execute(code, this.doc, this.textureRenderer, this.gisLayer, this.textureGenerator);
+        const result = await execute(code, this.doc, this.textureRenderer, this.gisLayer, this.selectionApi);
         success = result.success;
         errorMsg = result.error ?? "";
 
         if (success) {
+          // Register tool immediately in the viewer for live preview
+          if (result.toolDefinition && this.toolHost) {
+            const tool = this.buildToolFromResult(result);
+            if (tool) {
+              const category = result.toolDefinition.descriptor.category === "edit" ? "edit" : "create";
+              this.toolHost.registerTool(tool, result.toolDefinition.descriptor.label, category);
+              this.registeredTools.push(tool);
+            }
+          }
+
           this.tracker.record({
             prompt: text,
             code,
@@ -285,15 +319,27 @@ export class AiChatTab {
             createdIds: result.createdIds,
             removedIds: result.removedIds,
             timestamp: Date.now(),
+            contributionType: result.toolDefinition ? "tool" : result.commandDefinition ? "command" : intent,
+            toolDescriptor: result.toolDefinition?.descriptor,
+            commandDescriptor: result.commandDefinition?.descriptor,
           });
         }
       }
 
-      const displayText = success
-        ? summary || "Done."
-        : code
-          ? `Error: ${errorMsg}`
-          : response;
+      // Compute display text with contribution info
+      let displayText: string;
+      if (success) {
+        const base = summary || "Done.";
+        if (intent === "tool") {
+          displayText = `${base}\n\nTool added to toolbar — try it now!`;
+        } else if (intent === "command") {
+          displayText = `${base}\n\n(Registered as command — will be included when bundled as extension)`;
+        } else {
+          displayText = base;
+        }
+      } else {
+        displayText = code ? `Error: ${errorMsg}` : response;
+      }
 
       this.history.push({ role: "assistant", text: displayText, code: code ?? undefined, success });
       this.messages.push({ role: "assistant", content: response });
@@ -334,5 +380,37 @@ export class AiChatTab {
       this.renderMessages(messagesArea);
       messagesArea.scrollTop = messagesArea.scrollHeight;
     }
+  }
+
+  /**
+   * Convert an ExecutionResult's toolDefinition into a Tool object
+   * compatible with the viewer's ToolManager.
+   * Adapts the THREE.Vector3 intersection parameter to [x,y,z] arrays
+   * that AI-generated tool code expects.
+   */
+  private buildToolFromResult(result: ExecutionResult): Tool | null {
+    const def = result.toolDefinition;
+    if (!def) return null;
+
+    const noop = () => {};
+    return {
+      name: def.descriptor.id || `ai-tool-${crypto.randomUUID().slice(0, 8)}`,
+      activate: def.activate ?? noop,
+      deactivate: def.deactivate ?? noop,
+      onPointerDown: (event: PointerEvent, intersection: any) => {
+        const point = intersection
+          ? [intersection.x, intersection.y, intersection.z] as [number, number, number]
+          : null;
+        (def.onPointerDown ?? noop)(event, point);
+      },
+      onPointerMove: (event: PointerEvent, intersection: any) => {
+        const point = intersection
+          ? [intersection.x, intersection.y, intersection.z] as [number, number, number]
+          : null;
+        (def.onPointerMove ?? noop)(event, point);
+      },
+      onPointerUp: def.onPointerUp ?? noop,
+      onKeyDown: def.onKeyDown ?? noop,
+    };
   }
 }

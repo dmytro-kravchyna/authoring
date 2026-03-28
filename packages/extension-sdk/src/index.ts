@@ -96,6 +96,17 @@ export interface Command {
   handler: () => void | Promise<void>;
 }
 
+export interface SelectionAPI {
+  /** Get all currently selected contracts */
+  getAll(): any[];
+  /** Get IDs of all currently selected contracts */
+  getIds(): string[];
+  /** Get the first (primary) selected contract, or null */
+  getFirst(): any | null;
+  /** Clear the current selection */
+  clear(): void;
+}
+
 export interface ExtensionContext {
   /** Access to the BIM document */
   readonly doc: BimDocument;
@@ -103,6 +114,9 @@ export interface ExtensionContext {
   readonly registry: ElementRegistry;
   /** Access to the Three.js scene */
   readonly scene: THREE.Scene;
+
+  /** Selection state — query and clear the current element selection */
+  readonly selection: SelectionAPI;
 
   /** Mutation APIs */
   readonly editor: {
