@@ -42,6 +42,7 @@ import { SnapGroupManager, syncLevelSnapGroups } from "./utils/snap-groups";
 import { DoorTool } from "./tools/door-tool";
 import { PasteTool } from "./tools/paste-tool";
 import { ModelClipboard } from "./utils/clipboard";
+import { AiChatTab } from "./ai/chat-tab";
 
 async function main() {
   // --- Three.js Scene ---
@@ -249,6 +250,10 @@ async function main() {
   });
   sidePanel.addTab("materials", "Materials", () => {
     materialsTab.render(sidePanel.content);
+  });
+  const aiTab = new AiChatTab(doc);
+  sidePanel.addTab("ai", "AI", () => {
+    aiTab.render(sidePanel.content);
   });
   sidePanel.addTab("properties", "Properties", () => {
     const selected = selectTool.getSelectedContract();

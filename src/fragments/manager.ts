@@ -10,7 +10,7 @@ export class FragmentManager {
     this.fragments = fragments;
   }
 
-  static async create(scene: THREE.Scene, camera: THREE.Camera): Promise<FragmentManager> {
+  static async create(scene: THREE.Scene, camera: THREE.PerspectiveCamera | THREE.OrthographicCamera): Promise<FragmentManager> {
     const workerUrl = "/worker.mjs";
 
     const fragments = new FRAGS.FragmentsModels(workerUrl);
@@ -65,7 +65,7 @@ export class FragmentManager {
   }
 
   /** Load a fragment model from a binary buffer and add it to the scene. */
-  async loadModel(buffer: Uint8Array, scene: THREE.Scene, camera: THREE.Camera): Promise<void> {
+  async loadModel(buffer: Uint8Array, scene: THREE.Scene, camera: THREE.PerspectiveCamera | THREE.OrthographicCamera): Promise<void> {
     this.model = await this.fragments.load(buffer, {
       modelId: this.modelId,
       camera,

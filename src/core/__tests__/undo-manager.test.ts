@@ -52,7 +52,7 @@ function createMockDoc(): UndoDocumentApi {
   };
 }
 
-function createMockSync(): UndoSyncApi & { _fragIndex: number } {
+function createMockSync(): Omit<UndoSyncApi, "hasExtracted" | "lastFragmentRequestIndex"> & { _fragIndex: number; hasExtracted: boolean; readonly lastFragmentRequestIndex: number } {
   const mock = {
     _fragIndex: -1,
     get lastFragmentRequestIndex() {

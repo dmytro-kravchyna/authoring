@@ -70,7 +70,28 @@
       "Read(//c/Users/anton/.claude/**)",
       "Bash(ls -la .claude/settings*)",
       "Bash(grep -n \"implements ElementHandles\" /c/Users/anton/Desktop/code/revit/src/handles/*.ts)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "WebFetch(domain:docs.thatopen.com)",
+      "Bash(wc -l /Users/dmk/Projects/private/authoring/src/**/*.ts)",
+      "WebFetch(domain:code.visualstudio.com)",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:dockview.dev)",
+      "Bash(git mv:*)",
+      "Bash(npx -w packages/viewer tsc --noEmit)",
+      "Bash(curl -s http://localhost:3000/)",
+      "Bash(curl -s http://localhost:4000/api/health)",
+      "Bash(curl -s http://localhost:4000/api/extensions)",
+      "Bash(curl -s http://localhost:4000/api/extensions/meta/categories)",
+      "Bash(curl -s -X POST http://localhost:4000/api/extensions -F 'manifest={\"\"\"\"id\"\"\"\":\"\"\"\"com.test.hello\"\"\"\",\"\"\"\"name\"\"\"\":\"\"\"\"Hello Extension\"\"\"\",\"\"\"\"version\"\"\"\":\"\"\"\"1.0.0\"\"\"\",\"\"\"\"description\"\"\"\":\"\"\"\"A test extension\"\"\"\",\"\"\"\"author\"\"\"\":\"\"\"\"Test\"\"\"\"}')",
+      "Bash(curl -s http://localhost:4000/api/extensions/com.test.hello)",
+      "Bash(curl -s -X POST http://localhost:4000/api/extensions/com.test.hello/ratings -H \"Content-Type: application/json\" -d '{\"\"\"\"user_id\"\"\"\":\"\"\"\"user1\"\"\"\",\"\"\"\"rating\"\"\"\":5,\"\"\"\"review\"\"\"\":\"\"\"\"Great extension!\"\"\"\"}')",
+      "Bash(lsof -ti:3000,4000)",
+      "Bash(xargs kill:*)",
+      "Bash(chmod +x /Users/dmk/Projects/private/authoring/scripts/dev.sh)",
+      "Bash(echo \"$ANTHROPIC_API_KEY:-not_set\")",
+      "Bash(./scripts/dev.sh)",
+      "Bash(lsof -ti:3000)",
+      "Bash(lsof -ti:4000)"
     ]
   }
 }

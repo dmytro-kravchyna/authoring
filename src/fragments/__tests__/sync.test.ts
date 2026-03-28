@@ -94,6 +94,7 @@ vi.mock("three/examples/jsm/utils/BufferGeometryUtils.js", () => ({
 function makeWall(id: string, start: [number, number, number] = [0,0,0], end: [number, number, number] = [5,0,0]): WallContract {
   return {
     id, kind: "wall", start, end,
+    typeId: "test-wall-type",
     height: 3, thickness: 0.2, offset: 0,
     hostedElements: [], startJoin: "miter", endJoin: "miter",
   };
@@ -102,6 +103,7 @@ function makeWall(id: string, start: [number, number, number] = [0,0,0], end: [n
 function makeWindow(id: string, hostId: string, position = 0.5): WindowContract {
   return {
     id, kind: "window", hostId, position,
+    typeId: "test-window-type",
     width: 1.2, height: 1.0, sillHeight: 1.0,
   };
 }
@@ -221,7 +223,7 @@ function setupRegistry(doc: BimDocument): ElementRegistry {
       const wall = contract as WallContract;
       const rels: ElementRelationship[] = [];
       // hosts → windows
-      for (const childId of wall.hostedElements) {
+      for (const childId of (wall as any).hostedElements) {
         rels.push({ type: "hosts", targetId: childId });
       }
       // connectedTo → walls sharing an endpoint
@@ -251,7 +253,7 @@ function setupRegistry(doc: BimDocument): ElementRegistry {
         const host = doc.contracts.get(win.hostId) as WallContract | undefined;
         if (host) {
           doc.update(host.id, {
-            hostedElements: host.hostedElements.filter((id) => id !== win.id),
+            hostedElements: ((host as any).hostedElements as string[]).filter((id: string) => id !== win.id),
           } as any);
         }
       }
@@ -270,7 +272,7 @@ function setupRegistry(doc: BimDocument): ElementRegistry {
       const host = doc.contracts.get(win.hostId) as WallContract | undefined;
       if (host) {
         doc.update(host.id, {
-          hostedElements: host.hostedElements.filter((id) => id !== win.id),
+          hostedElements: ((host as any).hostedElements as string[]).filter((id: string) => id !== win.id),
         } as any);
       }
     },
@@ -485,7 +487,7 @@ describe("FragmentSync", () => {
       await sync.flush();
 
       sync.extract("w1");
-      sync.restore("w1");
+      sync.restore(["w1"]);
 
       await drainRestore();
     });
@@ -508,7 +510,7 @@ describe("FragmentSync", () => {
       sync.extract("win1");
 
       // Now restore win1 → should also restore wall and win2
-      sync.restore("win1");
+      sync.restore(["win1"]);
       await drainRestore();
 
       // After full restore, no overlays should remain
@@ -526,7 +528,7 @@ describe("FragmentSync", () => {
 
       // Extract, restore, immediately re-extract
       sync.extract("w1");
-      sync.restore("w1");
+      sync.restore(["w1"]);
       sync.extract("w1");
 
       // Drain the queue
@@ -559,7 +561,7 @@ describe("FragmentSync", () => {
       sync.vsm.markDirty("w1");
 
       // Restore both
-      sync.restore("w1");
+      sync.restore(["w1"]);
 
       // Drain the restore
       await drainRestore();
@@ -641,7 +643,7 @@ describe("FragmentSync", () => {
       doc.remove("w1");
 
       // Wait for microtask (queueMicrotask batching)
-      await new Promise((r) => queueMicrotask(r));
+      await new Promise<void>((r) => queueMicrotask(() => r()));
       await sync.flush();
 
       // Should be a single editor.edit call for the batch (not two separate ones)
@@ -701,7 +703,7 @@ describe("FragmentSync", () => {
 
       // Invariants should hold
       // Wait for microtask (deferred cuts cleanup) + flush timer
-      await new Promise((r) => queueMicrotask(r));
+      await new Promise<void>((r) => queueMicrotask(() => r()));
       await vi.advanceTimersByTimeAsync(150);
       expect(() => sync.assertInvariants()).not.toThrow();
     });
@@ -831,7 +833,7 @@ describe("FragmentSync", () => {
       await sync.flush();
 
       sync.extract("wA");
-      sync.restore("wA");
+      sync.restore(["wA"]);
       await drainRestore();
 
       const remainingOverlays = scene.children.filter(
@@ -869,7 +871,7 @@ describe("FragmentSync", () => {
       expect(meshesAfterExtract).toBeGreaterThanOrEqual(4);
 
       // Restore just win1 → should cascade to wall, win2, win3
-      sync.restore("win1");
+      sync.restore(["win1"]);
       await drainRestore();
 
       // All overlays should be cleaned up
@@ -982,7 +984,7 @@ describe("FragmentSync", () => {
       expect(sync.vsm.getState("f1")).toBe(1); // VisState.Extracted
 
       // Restore w1 — floor should ALSO be restored
-      sync.restore("w1");
+      sync.restore(["w1"]);
       await drainRestore();
 
       // Floor should be back to Normal — not stuck in Extracted
@@ -1204,7 +1206,7 @@ describe("FragmentSync", () => {
       // Both walls should be shown on base — navigateFragmentHistory
       // unconditionally shows all elements on base (delta takes
       // rendering precedence when it has geometry)
-      const showCalls = baseModel.setVisible.mock.calls.filter(
+      const showCalls = (baseModel!.setVisible as any).mock.calls.filter(
         (c: any[]) => c[1] === true
       );
       const shownIds = showCalls.flatMap((c: any[]) => c[0]);
@@ -1228,7 +1230,7 @@ describe("FragmentSync", () => {
       sync.extract("w1");
       expect(() => sync.assertInvariants()).not.toThrow();
 
-      sync.restore("w1");
+      sync.restore(["w1"]);
       await drainRestore();
       expect(() => sync.assertInvariants()).not.toThrow();
     });
