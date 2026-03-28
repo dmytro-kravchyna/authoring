@@ -4,6 +4,8 @@ import { buildSystemPrompt } from "./system-prompt";
 import { execute, extractCode, extractSummary } from "./executor";
 import { SessionTracker } from "./session-tracker";
 import { bundleSession } from "./bundler";
+import { TextureRenderer } from "./texture-renderer";
+import type { GisLayer3d } from "../gis/gis-layer-3d";
 
 interface ChatEntry {
   role: "user" | "assistant" | "system";
@@ -19,9 +21,17 @@ export class AiChatTab {
   private messages: Message[] = [];
   private container: HTMLElement | null = null;
   private isBusy = false;
+  private textureRenderer: TextureRenderer;
+  private gisLayer: GisLayer3d;
 
-  constructor(doc: BimDocument) {
+  constructor(
+    doc: BimDocument,
+    textureRenderer: TextureRenderer,
+    gisLayer: GisLayer3d,
+  ) {
     this.doc = doc;
+    this.textureRenderer = textureRenderer;
+    this.gisLayer = gisLayer;
   }
 
   render(container: HTMLElement) {
@@ -126,8 +136,14 @@ export class AiChatTab {
     form.className = "ai-key-form";
     form.innerHTML = `
       <h3>AI Builder</h3>
-      <p style="font-size:12px;color:#999;margin-bottom:12px;">Enter your Anthropic API key to start building with AI.</p>
+      <p style="font-size:12px;color:#999;margin-bottom:12px;">Enter your API keys to start building with AI.</p>
     `;
+
+    // Anthropic key
+    const label1 = document.createElement("label");
+    label1.textContent = "Anthropic API Key";
+    label1.style.cssText = "font-size:11px;color:#aaa;margin-bottom:2px;display:block;";
+    form.appendChild(label1);
 
     const input = document.createElement("input");
     input.type = "password";
@@ -135,13 +151,28 @@ export class AiChatTab {
     input.style.cssText = "width:100%;padding:6px 8px;border:1px solid #555;border-radius:4px;background:#1a1a1a;color:#e0e0e0;font-size:13px;margin-bottom:8px;";
     form.appendChild(input);
 
+    // Gemini key
+    const label2 = document.createElement("label");
+    label2.textContent = "Gemini API Key (optional, for photorealistic rendering)";
+    label2.style.cssText = "font-size:11px;color:#aaa;margin-bottom:2px;display:block;";
+    form.appendChild(label2);
+
+    const geminiInput = document.createElement("input");
+    geminiInput.type = "password";
+    geminiInput.placeholder = "AIza...";
+    geminiInput.value = TextureRenderer.getGeminiKey() ?? "";
+    geminiInput.style.cssText = "width:100%;padding:6px 8px;border:1px solid #555;border-radius:4px;background:#1a1a1a;color:#e0e0e0;font-size:13px;margin-bottom:8px;";
+    form.appendChild(geminiInput);
+
     const btn = document.createElement("button");
-    btn.textContent = "Save Key";
+    btn.textContent = "Save Keys";
     btn.style.cssText = "width:100%;padding:6px;border:1px solid #0088ff;border-radius:4px;background:#0066cc;color:#fff;cursor:pointer;font-size:13px;";
     btn.addEventListener("click", () => {
       const key = input.value.trim();
+      const geminiKey = geminiInput.value.trim();
       if (key) {
         setApiKey(key);
+        if (geminiKey) TextureRenderer.setGeminiKey(geminiKey);
         this.render(container);
       }
     });
@@ -238,7 +269,7 @@ export class AiChatTab {
       let errorMsg = "";
 
       if (code) {
-        const result = execute(code, this.doc);
+        const result = await execute(code, this.doc, this.textureRenderer, this.gisLayer);
         success = result.success;
         errorMsg = result.error ?? "";
 

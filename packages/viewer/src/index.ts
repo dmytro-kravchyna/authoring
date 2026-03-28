@@ -44,6 +44,8 @@ import { TempDimensionRenderer } from "./ui/temp-dimensions";
 import { SpatialIndex } from "./utils/spatial-index";
 import { SnapGroupManager, syncLevelSnapGroups } from "./utils/snap-groups";
 import { ModelClipboard } from "./utils/clipboard";
+import { GisLayer3d } from "./gis/gis-layer-3d";
+import { TextureRenderer } from "./ai/texture-renderer";
 
 // ── Public types ──────────────────────────────────────────────────
 
@@ -70,6 +72,8 @@ export interface ViewerInstance {
   selectTool: SelectTool;
   allTools: Tool[];
   clipboard: ModelClipboard;
+  gisLayer: GisLayer3d;
+  textureRenderer: TextureRenderer;
 
   // UI panels (render into shell-provided containers)
   typesTab: TypesTab;
@@ -347,6 +351,12 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
   }
   animate();
 
+  // --- GIS Layer ---
+  const gisLayer = new GisLayer3d(scene, camera, renderer);
+
+  // --- Texture Renderer ---
+  const textureRenderer = new TextureRenderer(renderer, scene, camera, container);
+
   setStatus("Ready. Select a tool to begin.");
 
   // --- Save ---
@@ -441,6 +451,8 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
     selectTool,
     allTools,
     clipboard,
+    gisLayer,
+    textureRenderer,
     typesTab,
     levelsTab,
     materialsTab,
@@ -495,6 +507,10 @@ export { TypesTab } from "./ui/types-tab";
 export { LevelsTab } from "./ui/levels-tab";
 export { MaterialsTab } from "./ui/materials-tab";
 export { PropertiesPanel } from "./ui/properties";
+
+// AI / GIS
+export { TextureRenderer } from "./ai/texture-renderer";
+export { GisLayer3d } from "./gis/gis-layer-3d";
 
 // Factory functions for creating default type contracts
 export { createColumnType } from "./elements/column-type";

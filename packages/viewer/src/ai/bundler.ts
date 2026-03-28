@@ -16,9 +16,11 @@ Respond with EXACTLY this JSON format (no markdown, no code fences):
 The code should be a self-contained function body that uses the same API as the session:
 - doc, createWall, createColumn, createFloor, createWindow, createDoor, THREE
 - wallTypeId, columnTypeId, windowTypeId, doorTypeId
-- Wrap everything in doc.transaction()
+- textureRenderer (for photorealistic rendering: await textureRenderer.render(prompt?), textureRenderer.discard(), textureRenderer.download(filename?))
+- Wrap BIM operations in doc.transaction()
 - Make it parameterizable where it makes sense (e.g., grid size, spacing)
-- Remove any hardcoded UUIDs — use the typeId variables instead`;
+- Remove any hardcoded UUIDs — use the typeId variables instead
+- If the session includes texture rendering, the code must be async`;
 
 export interface BundleResult {
   name: string;

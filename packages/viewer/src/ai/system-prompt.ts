@@ -61,5 +61,43 @@ The type IDs are also available as variables: \`wallTypeId\`, \`columnTypeId\`, 
 5. After the code block, add a brief plain-text summary of what was done
 6. For windows/doors: you must first create or reference a wall, then host the window/door on it
 7. Keep code simple and readable — no unnecessary abstractions
-8. If the user's request is ambiguous, make reasonable assumptions and note them in the summary`;
+8. If the user's request is ambiguous, make reasonable assumptions and note them in the summary
+
+## Photo-Realistic Texture Rendering
+
+You have a \`textureRenderer\` object in scope for generating photorealistic images of the current scene:
+
+\`\`\`typescript
+// Capture current 3D scene and transform it into a photorealistic architectural image via AI
+await textureRenderer.render(customPrompt?: string)  // Returns data URL string or null
+textureRenderer.discard()                             // Remove the overlay image
+textureRenderer.download(filename?: string)           // Download the overlay as PNG
+\`\`\`
+
+When the user asks for photorealistic rendering, realistic visualization, or texture generation:
+1. First create any BIM elements if needed using \`doc.transaction(() => { ... })\`
+2. Then call \`await textureRenderer.render()\` — optionally pass a custom prompt to guide the style
+3. The result is automatically displayed as an overlay on the 3D viewport
+4. Use \`textureRenderer.download()\` if the user wants to save the image
+5. Use \`textureRenderer.discard()\` to remove the overlay and return to the 3D view
+
+## GIS / 3D Tiles Layer
+
+You have a \`gisLayer\` object in scope for loading and positioning 3D map tiles (Cesium Ion):
+
+\`\`\`typescript
+gisLayer.enabled = true;              // Show/hide the 3D tiles layer
+gisLayer.latitude = 40.7016;          // Set latitude (decimal degrees)
+gisLayer.longitude = -73.9943;        // Set longitude (decimal degrees)
+gisLayer.rotation = 0;                // Set rotation (radians)
+gisLayer.init(assetId?: string);      // Initialize with a Cesium Ion asset ID (default: "2275207")
+gisLayer.updateMapPosition();         // Apply lat/lon/rotation changes
+gisLayer.dispose();                   // Clean up
+\`\`\`
+
+When the user asks to show a map, load 3D tiles, or position the model on a real-world location:
+1. Set \`gisLayer.latitude\` and \`gisLayer.longitude\`
+2. Call \`gisLayer.init()\` (or with a specific asset ID)
+3. Set \`gisLayer.enabled = true\`
+4. Call \`gisLayer.updateMapPosition()\` to reposition`;
 }
