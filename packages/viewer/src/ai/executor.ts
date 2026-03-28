@@ -12,12 +12,36 @@ import { createDoorType } from "../elements/door-type";
 import type { TextureRenderer } from "./texture-renderer";
 import type { TextureGenerator } from "./texture-generator";
 import type { GisLayer3d } from "../gis/gis-layer-3d";
+import type { ToolDescriptorMeta, CommandDescriptorMeta } from "./session-tracker";
+
+/** Simplified selection API passed to AI-generated code. */
+export interface SelectionAPI {
+  getAll(): any[];
+  getIds(): string[];
+  getFirst(): any | null;
+  clear(): void;
+}
 
 export interface ExecutionResult {
   success: boolean;
   createdIds: string[];
   removedIds: string[];
   error?: string;
+  /** If the AI generated a tool definition (Mode C) */
+  toolDefinition?: {
+    descriptor: ToolDescriptorMeta;
+    activate: () => void;
+    deactivate: () => void;
+    onPointerDown: (event: PointerEvent, point: [number, number, number] | null) => void;
+    onPointerMove: (event: PointerEvent, point: [number, number, number] | null) => void;
+    onPointerUp: (event: PointerEvent) => void;
+    onKeyDown: (event: KeyboardEvent) => void;
+  };
+  /** If the AI generated a command definition (Mode D) */
+  commandDefinition?: {
+    descriptor: CommandDescriptorMeta;
+    handler: () => void | Promise<void>;
+  };
 }
 
 /** Extract the first code block from a markdown response. */
@@ -37,6 +61,7 @@ export async function execute(
   textureRenderer?: TextureRenderer,
   gisLayer?: GisLayer3d,
   textureGenerator?: TextureGenerator,
+  selection?: SelectionAPI,
 ): Promise<ExecutionResult> {
   const createdIds: string[] = [];
   const removedIds: string[] = [];
@@ -72,7 +97,21 @@ export async function execute(
       }
     }
 
-    // Wrap code in async IIFE to support await for texture rendering
+    // Provide a no-op selection API when none is supplied
+    const sel: SelectionAPI = selection ?? { getAll: () => [], getIds: () => [], getFirst: () => null, clear: () => {} };
+
+    // Check if the code contains tool or command definition exports
+    const hasToolDef = /export\s+(?:const|let|var)\s+toolDefinition\b/.test(code);
+    const hasCommandDef = /export\s+(?:const|let|var)\s+commandDefinition\b/.test(code);
+
+    if (hasToolDef || hasCommandDef) {
+      // Mode C/D: Rewrite exports into a module-like object
+      return await executeContributionCode(
+        code, doc, typeIds, textureRenderer, gisLayer, sel, createdIds, removedIds, hasToolDef, hasCommandDef
+      );
+    }
+
+    // Mode A: Standard one-shot execution
     const wrappedCode = `return (async () => { ${code} })()`;
 
     const fn = new Function(
@@ -95,6 +134,7 @@ export async function execute(
       "gisLayer",
       "textureGenerator",
       "generateTexture",
+      "selection",
       wrappedCode
     );
 
@@ -125,6 +165,7 @@ export async function execute(
       gisLayer,
       textureGenerator,
       generateTexture,
+      sel,
     );
 
     return { success: true, createdIds, removedIds };
@@ -134,4 +175,109 @@ export async function execute(
     doc.onAdded.remove(onAdd);
     doc.onRemoved.remove(onRemove);
   }
+}
+
+/**
+ * Execute code that contains tool/command export definitions (Mode C / Mode D).
+ * Rewrites `export const/function` into assignments on a `__exports` object, then
+ * extracts the contribution definitions.
+ */
+async function executeContributionCode(
+  code: string,
+  doc: BimDocument,
+  typeIds: Record<string, string | undefined>,
+  textureRenderer: TextureRenderer | undefined,
+  gisLayer: GisLayer3d | undefined,
+  selection: SelectionAPI,
+  createdIds: string[],
+  removedIds: string[],
+  hasToolDef: boolean,
+  hasCommandDef: boolean,
+): Promise<ExecutionResult> {
+  // Rewrite export statements into __exports assignments
+  let rewritten = code
+    .replace(/export\s+const\s+(\w+)/g, "__exports.$1")
+    .replace(/export\s+let\s+(\w+)/g, "__exports.$1")
+    .replace(/export\s+var\s+(\w+)/g, "__exports.$1")
+    .replace(/export\s+function\s+(\w+)/g, "__exports.$1 = function $1")
+    .replace(/export\s+async\s+function\s+(\w+)/g, "__exports.$1 = async function $1")
+    .replace(/export\s+default\s+function\s*\(/g, "__exports.default = function(")
+    .replace(/export\s+default\s+async\s+function\s*\(/g, "__exports.default = async function(");
+
+  const wrappedCode = `
+    const __exports = {};
+    ${rewritten}
+    return __exports;
+  `;
+
+  const fn = new Function(
+    "doc",
+    "createWall",
+    "createColumn",
+    "createFloor",
+    "createWindow",
+    "createDoor",
+    "THREE",
+    "wallTypeId",
+    "columnTypeId",
+    "windowTypeId",
+    "doorTypeId",
+    "textureRenderer",
+    "gisLayer",
+    "selection",
+    wrappedCode
+  );
+
+  const exports = fn(
+    doc,
+    createWall,
+    createColumn,
+    createFloor,
+    createWindow,
+    createDoor,
+    THREE,
+    typeIds["wallTypeId"],
+    typeIds["columnTypeId"],
+    typeIds["windowTypeId"],
+    typeIds["doorTypeId"],
+    textureRenderer,
+    gisLayer,
+    selection,
+  );
+
+  const result: ExecutionResult = { success: true, createdIds, removedIds };
+
+  // Extract tool definition (Mode C)
+  if (hasToolDef && exports.toolDefinition) {
+    const desc = exports.toolDefinition;
+    const noop = () => {};
+    result.toolDefinition = {
+      descriptor: {
+        id: desc.id || "ai-tool",
+        label: desc.label || "AI Tool",
+        category: desc.category === "edit" ? "edit" : "create",
+      },
+      activate: exports.activate ?? noop,
+      deactivate: exports.deactivate ?? noop,
+      onPointerDown: exports.onPointerDown ?? noop,
+      onPointerMove: exports.onPointerMove ?? noop,
+      onPointerUp: exports.onPointerUp ?? noop,
+      onKeyDown: exports.onKeyDown ?? noop,
+    };
+  }
+
+  // Extract command definition (Mode D)
+  if (hasCommandDef && exports.commandDefinition) {
+    const desc = exports.commandDefinition;
+    result.commandDefinition = {
+      descriptor: {
+        id: desc.id || "ai-command",
+        label: desc.label || "AI Command",
+        keybinding: desc.keybinding,
+      },
+      handler: exports.default ?? (() => {}),
+    };
+  }
+
+  return result;
 }

@@ -8,8 +8,8 @@
  * session into an extension and publish it to the Extension Store.
  */
 
-import type { ViewerInstance } from "@bim-ide/viewer";
-import { createColumnType, createWallType, createWindowType, createDoorType } from "@bim-ide/viewer";
+import type { ViewerInstance, Tool } from "@bim-ide/viewer";
+import { createColumnType, createWallType, createWindowType, createDoorType, interceptAndAugment, type ContributionIntent } from "@bim-ide/viewer";
 import { marked } from "marked";
 
 interface ChatMessage {
@@ -17,12 +17,27 @@ interface ChatMessage {
   content: string;
 }
 
+interface RegisteredToolMeta {
+  id: string;
+  label: string;
+  category: "create" | "edit";
+  tool: Tool;  // reference for cleanup
+}
+
+interface RegisteredCommandMeta {
+  id: string;
+  label: string;
+  keybinding?: string;
+}
+
 interface Session {
   id: string;
   startedAt: number;
-  commands: Array<{ prompt: string; code: string; timestamp: number }>;
+  commands: Array<{ prompt: string; code: string; timestamp: number; contributionType: ContributionIntent }>;
   createdContractIds: string[];
   registeredKinds: string[];
+  registeredTools: RegisteredToolMeta[];
+  registeredCommands: RegisteredCommandMeta[];
 }
 
 // API key storage
@@ -87,6 +102,8 @@ function createSession(): Session {
     commands: [],
     createdContractIds: [],
     registeredKinds: [],
+    registeredTools: [],
+    registeredCommands: [],
   };
 }
 
@@ -169,7 +186,12 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
   function updateSessionIndicator() {
     const count = session.createdContractIds.length;
     const cmdCount = session.commands.length;
-    sessionIndicator.textContent = `Session: ${cmdCount} command${cmdCount !== 1 ? "s" : ""}, ${count} element${count !== 1 ? "s" : ""} created`;
+    const toolCount = session.registeredTools.length;
+    const regCmdCount = session.registeredCommands.length;
+    let text = `Session: ${cmdCount} step${cmdCount !== 1 ? "s" : ""}, ${count} element${count !== 1 ? "s" : ""} created`;
+    if (toolCount > 0) text += `, ${toolCount} tool${toolCount !== 1 ? "s" : ""}`;
+    if (regCmdCount > 0) text += `, ${regCmdCount} command${regCmdCount !== 1 ? "s" : ""}`;
+    sessionIndicator.textContent = text;
     bundleBtn.disabled = session.commands.length === 0;
   }
 
@@ -206,12 +228,25 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
     if (!prompt) return;
 
     input.value = "";
+
+    // Intercept and classify intent, augment prompt for tool/command contributions
+    const { augmented, intent } = interceptAndAugment(prompt);
+
     addUserMessage(prompt);
 
-    const indicator = addSystemIndicator("Building...");
+    const indicator = addSystemIndicator(
+      intent !== "action" ? `Generating ${intent} definition...` : "Building..."
+    );
 
     try {
-      const response = await callClaudeAPI(apiKey, messages);
+      // Send augmented prompt (with contribution guidance) to the AI
+      // but keep the original in the display history
+      const augmentedMessages: ChatMessage[] = [
+        ...messages.slice(0, -1),  // all previous messages as-is
+        { role: "user" as const, content: augmented },  // augmented version of latest
+      ];
+      // The messages array already had addUserMessage push the original, so we use augmentedMessages for the API call
+      const response = await callClaudeAPI(apiKey, augmentedMessages);
 
       indicator.remove();
 
@@ -235,15 +270,25 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
 
         try {
           const result = await loadGeneratedCode(code, viewer, session);
-          session.commands.push({ prompt, code, timestamp: Date.now() });
+          const contributionType = result.newTools.length > 0 ? "tool"
+            : result.newCommands.length > 0 ? "command"
+            : result.newKinds.length > 0 ? "element"
+            : intent;
+          session.commands.push({ prompt, code, timestamp: Date.now(), contributionType: contributionType as ContributionIntent });
           updateSessionIndicator();
 
           const newCount = result.newContractIds.length;
           const kindInfo = result.newKinds.length > 0
             ? ` New element type${result.newKinds.length > 1 ? "s" : ""}: ${result.newKinds.join(", ")}.`
             : "";
+          const toolInfo = result.newTools.length > 0
+            ? ` Tool registered: ${result.newTools.map(t => `"${t.label}" (${t.category})`).join(", ")}. It's now available in the toolbar!`
+            : "";
+          const commandInfo = result.newCommands.length > 0
+            ? ` Command registered: ${result.newCommands.map(c => `"${c.label}"`).join(", ")}.`
+            : "";
           addAssistantMessage(
-            `Done! ${newCount > 0 ? `${newCount} element${newCount !== 1 ? "s" : ""} created.` : "Code executed."}${kindInfo}\n\n` +
+            `Done! ${newCount > 0 ? `${newCount} element${newCount !== 1 ? "s" : ""} created.` : "Code executed."}${kindInfo}${toolInfo}${commandInfo}\n\n` +
             "Send another command or click Bundle when ready."
           );
         } catch (loadErr: any) {
@@ -334,12 +379,8 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
               readme: documentation,
               contributes: {
                 elements: summary.elementKinds.map((k: string) => ({ kind: k, entrypoint: "bundle.js" })),
-                commands: [
-                  {
-                    id: "run",
-                    label: summary.name,
-                  },
-                ],
+                tools: summary.tools.map((t: any) => ({ id: t.id, label: t.label, icon: undefined, entrypoint: "bundle.js" })),
+                commands: summary.commands.map((c: any) => ({ id: c.id, label: c.label })),
                 wiki: [
                   {
                     path: `${summary.suggestedId}/overview`,
@@ -387,6 +428,10 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
   }
 
   function handleNewSession() {
+    // Clean up tools registered during the current session
+    for (const toolMeta of session.registeredTools) {
+      viewer.unregisterTool(toolMeta.tool);
+    }
     session = createSession();
     messages.length = 0;
     messagesArea.innerHTML = "";
@@ -412,7 +457,7 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
 function getSystemPrompt(): string {
   return `You are a BIM Feature Builder AI running inside a BIM authoring IDE. You generate executable JavaScript code that runs against the viewer API.
 
-## Two Modes
+## Four Modes
 
 ### Mode A — Scripting (manipulating existing elements)
 Use this when the user wants to create, modify, or delete instances of existing element types (columns, walls, floors, doors, windows).
@@ -439,6 +484,100 @@ export const elementDefinition = { kind: "beam", ... };
 export const typeDefinition = { kind: "beamType", ... };
 \`\`\`
 
+### Mode C — Reusable Tool Definition
+Use this when the user asks to "create a tool", "make a placement tool", "build an interactive tool", or anything that implies a reusable pointer-based instrument that should appear in the toolbar.
+
+Export a \`toolDefinition\` descriptor plus lifecycle functions:
+\`\`\`javascript
+// Tool descriptor — controls how it appears in the toolbar
+export const toolDefinition = {
+  id: "my-tool-id",           // kebab-case unique ID
+  label: "My Tool",           // Display name in toolbar
+  category: "create",         // "create" (places new) or "edit" (modifies existing)
+  description: "What this tool does"
+};
+
+// Module-scoped state
+let preview = null;
+
+// Called when tool is activated (selected in toolbar)
+export function activate() {
+  // Setup: create preview geometry, reset state
+}
+
+// Called when tool is deactivated
+export function deactivate() {
+  // Cleanup: remove preview geometry, reset state
+}
+
+// Called on click in 3D viewport. point is [x, y, z] world coords or null.
+export function onPointerDown(event, point) {
+  if (!point) return;
+  viewer.doc.transaction(() => {
+    viewer.doc.add({
+      id: crypto.randomUUID(),
+      kind: "column",
+      typeId: columnTypeId,
+      base: point,
+    });
+  });
+}
+
+// Called on mouse move — update preview, show guides
+export function onPointerMove(event, point) {}
+
+// Called on mouse up
+export function onPointerUp(event) {}
+
+// Called on key press while tool is active
+export function onKeyDown(event) {
+  if (event.key === "Escape") { /* cancel */ }
+}
+\`\`\`
+
+Rules for Mode C:
+- Lifecycle functions have the same scope as Mode A (viewer, typeId variables, viewer.selection, etc.)
+- Category "create" tools appear in the creation toolbar section; "edit" tools in the edit section
+- For "edit" tools that operate on selected elements, use \`viewer.selection.getAll()\` in activate() or onPointerDown()
+- Always clean up preview geometry in deactivate()
+- Use viewer.doc.transaction() for element creation/modification
+- The point parameter is [x, y, z] world coordinates on the work plane
+
+### Mode D — Reusable Command Definition
+Use this when the user asks to "create a command", "add a button", "make a shortcut", or anything that implies a reusable one-shot action.
+
+Export a \`commandDefinition\` descriptor plus a default handler function:
+\`\`\`javascript
+export const commandDefinition = {
+  id: "my-command-id",        // kebab-case unique ID
+  label: "My Command",        // Display name
+  category: "editing",        // Optional grouping
+  keybinding: "Ctrl+Shift+G"  // Optional keyboard shortcut
+};
+
+// Command handler — executed when invoked
+export default function(viewer) {
+  viewer.doc.transaction(() => {
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) {
+        viewer.doc.add({
+          id: crypto.randomUUID(),
+          kind: "column",
+          typeId: columnTypeId,
+          base: [i * 3, 0, j * 3],
+        });
+      }
+    }
+  });
+}
+\`\`\`
+
+Rules for Mode D:
+- Commands execute immediately when invoked (no pointer interaction)
+- Same scope as Mode A
+- Keep commands idempotent where possible
+- Use viewer.doc.transaction() for multi-element operations
+
 ## Viewer API Reference
 
 The viewer object passed to your default function has:
@@ -450,21 +589,19 @@ The viewer object passed to your default function has:
 - \`viewer.doc.contracts\` — Map<ContractId, Contract> of all contracts
 - \`viewer.doc.transaction(() => { ... })\` — group mutations atomically
 
-### viewer.THREE — Three.js module
-- Full Three.js library: use \`viewer.THREE.Vector3\`, \`viewer.THREE.Raycaster\`, \`viewer.THREE.Mesh\`, etc.
-- Do NOT use \`window.THREE\` or try to load THREE dynamically — always use \`viewer.THREE\`
-
 ### viewer.scene — THREE.Scene
 - Full Three.js scene access
 
-### viewer.camera — THREE.PerspectiveCamera
-- The active camera
-
-### viewer.renderer — THREE.WebGLRenderer
-- The active renderer; \`viewer.renderer.domElement\` is the canvas
-
 ### viewer.engine — GeometryEngine
 - WASM geometry engine for extrusions, walls, etc.
+
+### viewer.selection — Selection API
+- \`viewer.selection.getAll()\` — returns all currently selected contracts (array)
+- \`viewer.selection.getIds()\` — returns IDs of all selected contracts (string[])
+- \`viewer.selection.getFirst()\` — returns the first selected contract, or null
+- \`viewer.selection.clear()\` — clears the current selection
+
+Use the selection API when the user wants to operate on "selected elements", "these elements", "the current selection", etc.
 
 ## Pre-injected Type ID Variables
 
@@ -475,6 +612,31 @@ The following local variables are automatically available inside your default fu
 - \`doorTypeId\` — ID of the default door type
 
 Default types are auto-created if they don't exist yet, so these variables are always valid.
+
+## Working with Selected Elements
+
+\`\`\`javascript
+// Get all selected elements and modify them
+const selected = viewer.selection.getAll();
+viewer.doc.transaction(() => {
+  for (const contract of selected) {
+    if (contract.kind === "column") {
+      viewer.doc.update(contract.id, { base: [contract.base[0], contract.base[1] + 1, contract.base[2]] });
+    }
+  }
+});
+
+// Remove all selected elements
+const ids = viewer.selection.getIds();
+viewer.doc.transaction(() => {
+  for (const id of ids) viewer.doc.remove(id);
+});
+viewer.selection.clear();
+\`\`\`
+
+When the user says "move the selected…", "delete selected…", "change the selected…", "duplicate the selected…", or refers to "these elements" / "the current selection", use the selection API.
+
+For "edit" category tools (Mode C with category: "edit"), use \`viewer.selection.getAll()\` inside lifecycle methods to operate on whatever the user has selected.
 
 ## Element Reference
 
@@ -723,64 +885,19 @@ viewer.gisLayer.updateMapPosition();         // Apply lat/lon/rotation changes
 ## Important Rules
 
 1. Always wrap code in a single \`\`\`javascript code block
-2. For scripting mode, export default function(viewer) { ... }. If you use \`await\` anywhere, you MUST declare it: export default async function(viewer) { ... }
-3. Use crypto.randomUUID() for all IDs
-4. Use the pre-injected typeId variables (columnTypeId, wallTypeId, windowTypeId, doorTypeId) directly
-5. Geometry syncs automatically when contracts are added/updated — no manual sync needed
-6. Coordinates are [x, y, z] where y is UP (elevation)
-7. Do NOT use TypeScript syntax — only plain JavaScript
-8. Do NOT use import statements — you receive the viewer as a function parameter
-9. For random positions, keep values reasonable (e.g., x/z between -10 and 10)
-10. When creating multiple elements, use viewer.doc.transaction() to batch them
-11. Always use \`viewer.THREE\` for Three.js constructors (Vector3, Raycaster, Mesh, etc.) — NEVER use \`window.THREE\` or dynamic loading
-12. Keep code concise — under 250 lines. For complex interactive tools, focus on core logic and minimal UI
-
-## Interactive Tools Pattern
-
-For tools that need mouse interaction (click, hover, snap indicators), use this pattern:
-\`\`\`javascript
-export default function(viewer) {
-  const { THREE, scene, camera, renderer, doc } = viewer;
-  const canvas = renderer.domElement;
-  const raycaster = new THREE.Raycaster();
-  const mouse = new THREE.Vector2();
-
-  function raycast(event) {
-    const rect = canvas.getBoundingClientRect();
-    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera);
-    return raycaster.intersectObjects(scene.children, true);
-  }
-
-  // Find wall contract from a mesh hit
-  function wallFromHit(hit) {
-    let obj = hit.object;
-    while (obj) {
-      if (obj.userData?.id) {
-        const c = doc.contracts.get(obj.userData.id);
-        if (c?.kind === "wall") return c;
-      }
-      obj = obj.parent;
-    }
-    return null;
-  }
-
-  // Create a snap indicator
-  const snapGeo = new THREE.SphereGeometry(0.12, 16, 16);
-  const snapMat = new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.7, depthTest: false });
-  const snap = new THREE.Mesh(snapGeo, snapMat);
-  snap.visible = false;
-  snap.renderOrder = 9999;
-  scene.add(snap);
-
-  function onMouseMove(e) { /* update snap indicator */ }
-  function onClick(e) { /* handle selection */ }
-
-  canvas.addEventListener("mousemove", onMouseMove);
-  canvas.addEventListener("click", onClick);
-}
-\`\`\`
+2. For Mode A (scripting), always export default function(viewer) { ... } (use async if calling textureRenderer)
+3. For Mode C (tool), export toolDefinition + lifecycle functions (activate, deactivate, onPointerDown, etc.)
+4. For Mode D (command), export commandDefinition + export default function(viewer) { ... } handler
+5. Use crypto.randomUUID() for all IDs
+6. Use the pre-injected typeId variables (columnTypeId, wallTypeId, windowTypeId, doorTypeId) directly
+7. Geometry syncs automatically when contracts are added/updated — no manual sync needed
+8. Coordinates are [x, y, z] where y is UP (elevation)
+9. Do NOT use TypeScript syntax — only plain JavaScript
+10. Do NOT use import statements — you receive the viewer as a function parameter
+11. For random positions, keep values reasonable (e.g., x/z between -10 and 10)
+12. When creating multiple elements, use viewer.doc.transaction() to batch them
+13. When the user asks for a "reusable tool" or "interactive tool" or "placement tool", use Mode C
+14. When the user asks for a "command", "button", "shortcut", or "reusable action", use Mode D
 
 ## ElementTypeDefinition (for Mode B only)
 
@@ -805,13 +922,23 @@ Respond with ONLY the code block. No explanations — the user doesn't see the c
 function getBundleSummaryPrompt(): string {
   return `You are analyzing a BIM Feature Builder session. Given the list of commands the user issued and what they created, produce a JSON summary for bundling this session as an installable extension.
 
+The session may contain different types of contributions:
+- Scripting commands (one-shot element operations)
+- Tool definitions (interactive pointer-based tools for the toolbar)
+- Command definitions (reusable one-shot actions)
+- Element type definitions (new BIM element kinds)
+
 Respond with ONLY a JSON object:
 {
   "name": "Human-readable extension name",
   "description": "One-sentence description of what this extension does",
   "suggestedId": "ai-generated.kebab-case-id",
-  "elementKinds": ["list", "of", "new", "element", "kinds", "defined"]
-}`;
+  "elementKinds": ["list", "of", "new", "element", "kinds", "defined"],
+  "tools": [{"id": "tool-id", "label": "Tool Label", "category": "create"}],
+  "commands": [{"id": "command-id", "label": "Command Label"}]
+}
+
+Include tools and commands arrays only if the session registered any.`;
 }
 
 function getDocumentationPrompt(): string {
@@ -845,6 +972,11 @@ The activate function receives a context object with:
 - ctx.doc — BimDocument (same API as viewer.doc: add, update, remove, contracts, transaction)
 - ctx.registry — ElementRegistry (register new element kinds)
 - ctx.scene — THREE.Scene
+- ctx.selection — Selection API:
+  - ctx.selection.getAll() — all currently selected contracts
+  - ctx.selection.getIds() — IDs of selected contracts
+  - ctx.selection.getFirst() — first selected contract or null
+  - ctx.selection.clear() — clear selection
 - ctx.editor.registerElement(def) — register ElementTypeDefinition
 - ctx.editor.registerTool(tool, descriptor) — register interactive tool
 - ctx.editor.registerCommand(cmd) — register a command button { id, label, handler }
@@ -873,9 +1005,13 @@ Rules:
 2. Use crypto.randomUUID() for IDs
 3. Plain JavaScript only, no TypeScript
 4. Wrap in a single \`\`\`javascript code block
-5. ALL session replay code goes INSIDE the command handler, NOT directly in activate()
-6. The command label should be a short, descriptive action name
-7. If the handler is async (e.g. uses textureGenerator), make it async`;
+5. If the session contains tool definitions, convert them to ctx.editor.registerTool() calls
+6. If the session contains command definitions, convert them to ctx.editor.registerCommand() calls
+7. Tool objects need: name, activate, deactivate, onPointerDown(event, point), onPointerMove(event, point), onPointerUp(event), onKeyDown(event)
+8. The descriptor for registerTool needs: { label: string, category: "create" | "edit" }
+9. Commands need: { id, label, handler() }
+10. For edit tools that operate on selected elements, use ctx.selection (getAll, getIds, getFirst, clear)
+11. Replace viewer.selection references with ctx.selection in bundled code`;
 }
 
 // ── Claude API integration ──────────────────────────────────────────
@@ -956,18 +1092,42 @@ async function callClaudeWithSystemPrompt(
 async function summarizeSession(
   apiKey: string,
   session: Session
-): Promise<{ name: string; description: string; suggestedId: string; elementKinds: string[] }> {
+): Promise<{
+  name: string;
+  description: string;
+  suggestedId: string;
+  elementKinds: string[];
+  tools: Array<{ id: string; label: string; category: string }>;
+  commands: Array<{ id: string; label: string }>;
+}> {
   const commandSummary = session.commands
-    .map((c, i) => `${i + 1}. "${c.prompt}"`)
+    .map((c, i) => `${i + 1}. [${c.contributionType}] "${c.prompt}"`)
     .join("\n");
 
-  const content = `Session commands:\n${commandSummary}\n\nElements created: ${session.createdContractIds.length}\nNew element kinds registered: ${session.registeredKinds.join(", ") || "none"}`;
+  const toolInfo = session.registeredTools.length > 0
+    ? `\nTools registered: ${session.registeredTools.map(t => `${t.id} ("${t.label}", ${t.category})`).join(", ")}`
+    : "";
+  const commandInfo = session.registeredCommands.length > 0
+    ? `\nCommands registered: ${session.registeredCommands.map(c => `${c.id} ("${c.label}")`).join(", ")}`
+    : "";
+
+  const content = `Session commands:\n${commandSummary}\n\nElements created: ${session.createdContractIds.length}\nNew element kinds registered: ${session.registeredKinds.join(", ") || "none"}${toolInfo}${commandInfo}`;
 
   const text = await callClaudeWithSystemPrompt(apiKey, getBundleSummaryPrompt(), content);
 
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("Could not parse summary");
-  return JSON.parse(jsonMatch[0]);
+  const parsed = JSON.parse(jsonMatch[0]);
+
+  // Fall back to session-tracked tools/commands if AI didn't return them
+  return {
+    name: parsed.name,
+    description: parsed.description,
+    suggestedId: parsed.suggestedId,
+    elementKinds: parsed.elementKinds || [],
+    tools: parsed.tools || session.registeredTools.map(t => ({ id: t.id, label: t.label, category: t.category })),
+    commands: parsed.commands || session.registeredCommands.map(c => ({ id: c.id, label: c.label })),
+  };
 }
 
 async function generateExtensionModule(
@@ -976,8 +1136,15 @@ async function generateExtensionModule(
   summary: { name: string; description: string }
 ): Promise<string> {
   const codeBlocks = session.commands
-    .map((c, i) => `// Command ${i + 1}: "${c.prompt}"\n${c.code}`)
+    .map((c, i) => `// Command ${i + 1} [${c.contributionType}]: "${c.prompt}"\n${c.code}`)
     .join("\n\n");
+
+  const toolInfo = session.registeredTools.length > 0
+    ? `\n\nTools to register via ctx.editor.registerTool():\n${session.registeredTools.map(t => `- ${t.id}: "${t.label}" (category: ${t.category})`).join("\n")}`
+    : "";
+  const commandRegInfo = session.registeredCommands.length > 0
+    ? `\n\nCommands to register via ctx.editor.registerCommand():\n${session.registeredCommands.map(c => `- ${c.id}: "${c.label}"`).join("\n")}`
+    : "";
 
   const content =
     `Extension name: ${summary.name}\n` +
@@ -987,7 +1154,10 @@ async function generateExtensionModule(
     `The command id should be "run" and the label should be "${summary.name}". ` +
     `The command handler function should contain the session replay code. ` +
     `Replace any "viewer" references with "ctx" (ctx.doc, ctx.editor, ctx.scene, etc). ` +
-    `Remember: ctx.editor.registerElement(def) instead of viewer.registerElement(def).`;
+    `Remember: ctx.editor.registerElement(def) instead of viewer.registerElement(def).` +
+    `\nFor tool definitions (Mode C exports): convert toolDefinition + lifecycle functions into a Tool object and call ctx.editor.registerTool(tool, { label, category }).` +
+    `\nFor command definitions (Mode D exports): convert commandDefinition + default handler into ctx.editor.registerCommand({ id, label, handler }).` +
+    toolInfo + commandRegInfo;
 
   const text = await callClaudeWithSystemPrompt(apiKey, getExtensionGeneratorPrompt(), content);
   const code = extractCode(text);
@@ -1074,6 +1244,8 @@ function isCodeTruncated(code: string): boolean {
 interface LoadResult {
   newContractIds: string[];
   newKinds: string[];
+  newTools: RegisteredToolMeta[];
+  newCommands: RegisteredCommandMeta[];
 }
 
 /**
@@ -1147,18 +1319,34 @@ async function loadGeneratedCode(
     .map(([name, id]) => `const ${name} = "${id}";`)
     .join("\n  ");
 
-  const injected = jsCode.replace(
-    /export\s+default\s+(?:async\s+)?function\s*\([^)]*\)\s*\{/,
-    (match) => `${match}\n  // Auto-injected typeId variables\n  ${typeIdDeclarations}\n`
-  );
+  // Check for Mode C (tool) or Mode D (command) exports
+  const hasToolDef = /export\s+const\s+toolDefinition\b/.test(jsCode);
+  const hasCommandDef = /export\s+const\s+commandDefinition\b/.test(jsCode);
 
-  // Also handle arrow function variant: export default (viewer) => { or export default async (viewer) => {
-  const finalCode = injected === jsCode
-    ? jsCode.replace(
-        /export\s+default\s+(?:async\s+)?\([^)]*\)\s*=>\s*\{/,
-        (match) => `${match}\n  // Auto-injected typeId variables\n  ${typeIdDeclarations}\n`
-      )
-    : injected;
+  let finalCode: string;
+
+  if (hasToolDef || hasCommandDef) {
+    // For Mode C/D: inject viewer + typeIds at the top module scope.
+    // Lifecycle exports are module-scoped (not wrapped in a function that
+    // receives viewer), so we expose viewer via a temporary global.
+    finalCode =
+      `const viewer = window.__bimViewerForAI;\n` +
+      `// Auto-injected typeId variables\n${typeIdDeclarations}\n\n${jsCode}`;
+  } else {
+    // Mode A/B: inject typeIds inside the default function body
+    const injected = jsCode.replace(
+      /export\s+default\s+(?:async\s+)?function\s*\([^)]*\)\s*\{/,
+      (match) => `${match}\n  // Auto-injected typeId variables\n  ${typeIdDeclarations}\n`
+    );
+
+    // Also handle arrow function variant: export default (viewer) => { or export default async (viewer) => {
+    finalCode = injected === jsCode
+      ? jsCode.replace(
+          /export\s+default\s+(?:async\s+)?\([^)]*\)\s*=>\s*\{/,
+          (match) => `${match}\n  // Auto-injected typeId variables\n  ${typeIdDeclarations}\n`
+        )
+      : injected;
+  }
 
   console.log("[AI Builder] Final code to execute:\n", finalCode);
 
@@ -1204,16 +1392,85 @@ async function loadGeneratedCode(
   viewer.doc.onAdded.add(handler);
 
   const newKinds: string[] = [];
+  const newTools: RegisteredToolMeta[] = [];
+  const newCommands: RegisteredCommandMeta[] = [];
 
   // Create a blob URL and dynamically import
   const blob = new Blob([executableCode], { type: "text/javascript" });
   const url = URL.createObjectURL(blob);
 
+  // Expose viewer on window so Mode C/D module-scoped code can access it.
+  // Attach a selection helper API so AI-generated code can operate on selected elements.
+  if (!(viewer as any).selection) {
+    (viewer as any).selection = {
+      getAll: () => viewer.selectTool.getSelectedContractsAll(),
+      getIds: () => viewer.selectTool.getSelectedIds(),
+      getFirst: () => viewer.selectTool.getSelectedContract(),
+      clear: () => viewer.selectTool.clearSelection(),
+    };
+  }
+  (window as any).__bimViewerForAI = viewer;
+
   try {
     const module = await import(/* @vite-ignore */ url);
 
-    // Mode A: default export is a function → scripting mode
-    if (typeof module.default === "function") {
+    // Mode C: tool definition — register as a live tool in the toolbar
+    if (module.toolDefinition) {
+      const desc = module.toolDefinition;
+      console.log("[AI Builder] Registering tool (Mode C):", desc.id, desc.label);
+
+      // Build a Tool object from the exported lifecycle functions
+      const noop = () => {};
+      const tool: Tool = {
+        name: desc.id || `ai-tool-${crypto.randomUUID().slice(0, 8)}`,
+        activate: module.activate ?? noop,
+        deactivate: module.deactivate ?? noop,
+        onPointerDown: (event: PointerEvent, intersection: any) => {
+          // Convert THREE.Vector3 intersection to [x,y,z] array for AI-generated code
+          const point = intersection ? [intersection.x, intersection.y, intersection.z] as [number, number, number] : null;
+          (module.onPointerDown ?? noop)(event, point);
+        },
+        onPointerMove: (event: PointerEvent, intersection: any) => {
+          const point = intersection ? [intersection.x, intersection.y, intersection.z] as [number, number, number] : null;
+          (module.onPointerMove ?? noop)(event, point);
+        },
+        onPointerUp: module.onPointerUp ?? noop,
+        onKeyDown: module.onKeyDown ?? noop,
+      };
+
+      const category = desc.category === "edit" ? "edit" : "create";
+      viewer.registerTool(tool, desc.label || "AI Tool", category);
+
+      const meta: RegisteredToolMeta = {
+        id: desc.id || tool.name,
+        label: desc.label || "AI Tool",
+        category,
+        tool,
+      };
+      newTools.push(meta);
+    }
+
+    // Mode D: command definition — register and optionally execute for preview
+    if (module.commandDefinition) {
+      const desc = module.commandDefinition;
+      console.log("[AI Builder] Registering command (Mode D):", desc.id, desc.label);
+
+      const meta: RegisteredCommandMeta = {
+        id: desc.id || "ai-command",
+        label: desc.label || "AI Command",
+        keybinding: desc.keybinding,
+      };
+      newCommands.push(meta);
+
+      // If there's a default function and no tool definition, execute it as a preview
+      if (typeof module.default === "function" && !module.toolDefinition) {
+        console.log("[AI Builder] Executing command handler for preview...");
+        await module.default(viewer);
+      }
+    }
+
+    // Mode A: default export is a function → scripting mode (only if no Mode C/D)
+    if (typeof module.default === "function" && !module.toolDefinition && !module.commandDefinition) {
       console.log("[AI Builder] Executing default function (Mode A)...");
       await module.default(viewer);
       console.log("[AI Builder] Execution complete. Contracts added:", newContractIds.length);
@@ -1244,11 +1501,14 @@ async function loadGeneratedCode(
   } finally {
     URL.revokeObjectURL(url);
     viewer.doc.onAdded.remove(handler);
+    delete (window as any).__bimViewerForAI;
   }
 
   // Update session
   session.createdContractIds.push(...newContractIds);
   session.registeredKinds.push(...newKinds);
+  session.registeredTools.push(...newTools);
+  session.registeredCommands.push(...newCommands);
 
-  return { newContractIds, newKinds };
+  return { newContractIds, newKinds, newTools, newCommands };
 }

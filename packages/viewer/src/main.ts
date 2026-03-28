@@ -31,7 +31,13 @@ async function main() {
   sidePanel.addTab("materials", "Materials", () => {
     viewer.materialsTab.render(sidePanel.content);
   });
-  const aiTab = new AiChatTab(viewer.doc, viewer.textureRenderer, viewer.textureGenerator, viewer.gisLayer);
+  const selectionApi = {
+    getAll: () => viewer.selectTool.getSelectedContractsAll(),
+    getIds: () => viewer.selectTool.getSelectedIds(),
+    getFirst: () => viewer.selectTool.getSelectedContract(),
+    clear: () => viewer.selectTool.clearSelection(),
+  };
+  const aiTab = new AiChatTab(viewer.doc, viewer.textureRenderer, viewer.gisLayer, viewer, selectionApi);
   sidePanel.addTab("ai", "AI", () => {
     aiTab.render(sidePanel.content);
   });

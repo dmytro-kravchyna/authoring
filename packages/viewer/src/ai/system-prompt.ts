@@ -48,6 +48,12 @@ createWindowType(options?: { name?, width?, height?, sillHeight? }) → WindowTy
 createDoorType(options?: { name?, width?, height? }) → DoorTypeContract
 
 // THREE.js is available as THREE (for math helpers like THREE.Vector3 if needed)
+
+// Selection API — query the current element selection in the viewport
+selection.getAll()        // Returns all currently selected contracts (array)
+selection.getIds()        // Returns IDs of all selected contracts (string[])
+selection.getFirst()      // Returns the first selected contract, or null
+selection.clear()         // Clears the current selection
 \`\`\`
 
 ## Current Type IDs (use these — don't hardcode UUIDs)
@@ -198,5 +204,135 @@ When the user asks to show a map, load 3D tiles, or position the model on a real
 1. Set \`gisLayer.latitude\` and \`gisLayer.longitude\`
 2. Call \`gisLayer.init()\` (or with a specific asset ID)
 3. Set \`gisLayer.enabled = true\`
-4. Call \`gisLayer.updateMapPosition()\` to reposition`;
+4. Call \`gisLayer.updateMapPosition()\` to reposition
+
+## Working with Selected Elements
+
+You can read and operate on the user's current selection via the \`selection\` object:
+
+\`\`\`typescript
+// Get all selected elements and modify them
+const selected = selection.getAll();
+doc.transaction(() => {
+  for (const contract of selected) {
+    if (contract.kind === "column") {
+      doc.update(contract.id, { base: [contract.base[0], contract.base[1] + 1, contract.base[2]] });
+    }
+  }
+});
+
+// Remove all selected elements
+const ids = selection.getIds();
+doc.transaction(() => {
+  for (const id of ids) doc.remove(id);
+});
+selection.clear();
+\`\`\`
+
+When the user says "move the selected…", "delete selected…", "change the selected…", "duplicate the selected…", or refers to "these elements" / "the current selection", use the \`selection\` API.
+
+For "edit" category tools (Mode C with category: "edit"), use \`selection.getAll()\` inside lifecycle methods to operate on whatever the user has selected.
+
+## Mode C — Reusable Tool Definition
+
+When the user asks to "create a tool", "make a placement tool", "build an interactive tool", or anything that implies a reusable pointer-based instrument that should appear in the toolbar:
+
+Instead of writing one-shot code, define a **tool** with lifecycle methods. The tool will be registered in the toolbar and respond to pointer events.
+
+\`\`\`typescript
+// Export a descriptor object
+export const toolDefinition = {
+  id: "my-tool-id",           // kebab-case unique ID
+  label: "My Tool",           // Display name in toolbar
+  category: "create",         // "create" (places new elements) or "edit" (modifies existing)
+  description: "What this tool does"
+};
+
+// Tool state (module-scoped)
+let preview: any = null;
+
+// Called when the tool is activated (selected in toolbar)
+export function activate() {
+  // Setup: create preview geometry, reset state, etc.
+}
+
+// Called when the tool is deactivated (another tool selected)
+export function deactivate() {
+  // Cleanup: remove preview geometry, reset state
+}
+
+// Called when user clicks in the 3D viewport
+// \`point\` is the world-space intersection point on the work plane (THREE.Vector3), or null if no intersection
+export function onPointerDown(event: PointerEvent, point: [number, number, number] | null) {
+  if (!point) return;
+  // Place element at point, start drag, etc.
+  doc.transaction(() => {
+    doc.add({ id: crypto.randomUUID(), kind: "column", typeId: columnTypeId, base: point });
+  });
+}
+
+// Called on mouse move — update preview, show guides, etc.
+export function onPointerMove(event: PointerEvent, point: [number, number, number] | null) {
+  // Update preview position
+}
+
+// Called on mouse up — finalize drag operations
+export function onPointerUp(event: PointerEvent) {
+  // Finish operation if needed
+}
+
+// Called on key press while tool is active
+export function onKeyDown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    // Cancel current operation
+  }
+}
+\`\`\`
+
+Rules for tools:
+- The tool's lifecycle functions have access to the same scope as one-shot code (doc, createWall, createColumn, THREE, typeId variables, selection, etc.)
+- Category "create" tools appear in the creation section of the toolbar; "edit" tools in the edit section
+- For "edit" tools that operate on selected elements, use \`selection.getAll()\` in activate() or onPointerDown() to read what's selected
+- Always clean up preview geometry in deactivate()
+- Use doc.transaction() for element creation/modification in onPointerDown
+- The point parameter is [x, y, z] world coordinates on the work plane
+
+## Mode D — Reusable Command Definition
+
+When the user asks to "create a command", "add a button", "make a shortcut", or anything that implies a reusable one-shot action:
+
+Define a **command** — a named action that can be triggered via command palette or keybinding.
+
+\`\`\`typescript
+// Export a descriptor object
+export const commandDefinition = {
+  id: "my-command-id",        // kebab-case unique ID
+  label: "My Command",        // Display name
+  category: "editing",        // Optional grouping category
+  keybinding: "Ctrl+Shift+G"  // Optional keyboard shortcut
+};
+
+// The command handler — executed when the command is invoked
+export default function() {
+  doc.transaction(() => {
+    // Perform the action
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) {
+        doc.add({
+          id: crypto.randomUUID(),
+          kind: "column",
+          typeId: columnTypeId,
+          base: [i * 3, 0, j * 3],
+        });
+      }
+    }
+  });
+}
+\`\`\`
+
+Rules for commands:
+- Commands execute immediately when invoked (no pointer interaction)
+- The default export function has the same scope as one-shot code
+- Keep commands idempotent where possible
+- Use doc.transaction() for multi-element operations`;
 }

@@ -514,6 +514,8 @@ export type { ElementTypeDefinition, ElementRelationship, RelationshipBehavior }
 export type { AnyContract, ContractId } from "./core/contracts";
 export type { Tool } from "./tools/tool-manager";
 export { ToolManager } from "./tools/tool-manager";
+export { AiChatTab } from "./ai/chat-tab";
+export type { ToolRegistrationHost } from "./ai/chat-tab";
 export { TypesTab } from "./ui/types-tab";
 export { LevelsTab } from "./ui/levels-tab";
 export { MaterialsTab } from "./ui/materials-tab";
@@ -523,6 +525,10 @@ export { PropertiesPanel } from "./ui/properties";
 export { TextureRenderer } from "./ai/texture-renderer";
 export { TextureGenerator } from "./ai/texture-generator";
 export { GisLayer3d } from "./gis/gis-layer-3d";
+export { interceptAndAugment, classifyIntent, augmentPrompt } from "./ai/prompt-interceptor";
+export type { ContributionIntent, InterceptionResult } from "./ai/prompt-interceptor";
+export type { ToolDescriptorMeta, CommandDescriptorMeta } from "./ai/session-tracker";
+export type { SelectionAPI } from "./ai/executor";
 
 // Factory functions for creating default type contracts
 export { createColumnType } from "./elements/column-type";
