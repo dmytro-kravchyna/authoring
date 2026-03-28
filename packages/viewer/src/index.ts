@@ -77,6 +77,9 @@ export interface ViewerInstance {
   textureRenderer: TextureRenderer;
   textureGenerator: TextureGenerator;
 
+  // THREE.js module (for generated code to use constructors like THREE.Vector3, THREE.Raycaster, etc.)
+  THREE: typeof THREE;
+
   // UI panels (render into shell-provided containers)
   typesTab: TypesTab;
   levelsTab: LevelsTab;
@@ -445,6 +448,7 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
   const instance: ViewerInstance = {
     doc,
     registry,
+    THREE,
     scene,
     camera,
     renderer,

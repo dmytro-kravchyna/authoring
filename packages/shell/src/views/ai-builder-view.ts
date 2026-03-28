@@ -450,8 +450,18 @@ The viewer object passed to your default function has:
 - \`viewer.doc.contracts\` — Map<ContractId, Contract> of all contracts
 - \`viewer.doc.transaction(() => { ... })\` — group mutations atomically
 
+### viewer.THREE — Three.js module
+- Full Three.js library: use \`viewer.THREE.Vector3\`, \`viewer.THREE.Raycaster\`, \`viewer.THREE.Mesh\`, etc.
+- Do NOT use \`window.THREE\` or try to load THREE dynamically — always use \`viewer.THREE\`
+
 ### viewer.scene — THREE.Scene
 - Full Three.js scene access
+
+### viewer.camera — THREE.PerspectiveCamera
+- The active camera
+
+### viewer.renderer — THREE.WebGLRenderer
+- The active renderer; \`viewer.renderer.domElement\` is the canvas
 
 ### viewer.engine — GeometryEngine
 - WASM geometry engine for extrusions, walls, etc.
@@ -722,6 +732,55 @@ viewer.gisLayer.updateMapPosition();         // Apply lat/lon/rotation changes
 8. Do NOT use import statements — you receive the viewer as a function parameter
 9. For random positions, keep values reasonable (e.g., x/z between -10 and 10)
 10. When creating multiple elements, use viewer.doc.transaction() to batch them
+11. Always use \`viewer.THREE\` for Three.js constructors (Vector3, Raycaster, Mesh, etc.) — NEVER use \`window.THREE\` or dynamic loading
+12. Keep code concise — under 250 lines. For complex interactive tools, focus on core logic and minimal UI
+
+## Interactive Tools Pattern
+
+For tools that need mouse interaction (click, hover, snap indicators), use this pattern:
+\`\`\`javascript
+export default function(viewer) {
+  const { THREE, scene, camera, renderer, doc } = viewer;
+  const canvas = renderer.domElement;
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  function raycast(event) {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    return raycaster.intersectObjects(scene.children, true);
+  }
+
+  // Find wall contract from a mesh hit
+  function wallFromHit(hit) {
+    let obj = hit.object;
+    while (obj) {
+      if (obj.userData?.id) {
+        const c = doc.contracts.get(obj.userData.id);
+        if (c?.kind === "wall") return c;
+      }
+      obj = obj.parent;
+    }
+    return null;
+  }
+
+  // Create a snap indicator
+  const snapGeo = new THREE.SphereGeometry(0.12, 16, 16);
+  const snapMat = new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.7, depthTest: false });
+  const snap = new THREE.Mesh(snapGeo, snapMat);
+  snap.visible = false;
+  snap.renderOrder = 9999;
+  scene.add(snap);
+
+  function onMouseMove(e) { /* update snap indicator */ }
+  function onClick(e) { /* handle selection */ }
+
+  canvas.addEventListener("mousemove", onMouseMove);
+  canvas.addEventListener("click", onClick);
+}
+\`\`\`
 
 ## ElementTypeDefinition (for Mode B only)
 

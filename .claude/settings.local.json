@@ -133,7 +133,8 @@
       "Read(//Users/dmk/Projects/private/authoring/**)",
       "Bash(done)",
       "Bash(find /Users/dmk/Projects/private/authoring -name *.sql -o -name *migrations* -o -name *prisma* -o -name *drizzle*)",
-      "Bash(find /Users/dmk/Projects/private/authoring -name .env* -o -name *.env)"
+      "Bash(find /Users/dmk/Projects/private/authoring -name .env* -o -name *.env)",
+      "Bash(find /Users/dmk/Projects/private/authoring/packages -name gis* -type f)"
     ]
   }
 }
