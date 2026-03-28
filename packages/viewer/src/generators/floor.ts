@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { GeometryEngine } from "@thatopen/fragments";
 import type { FloorContract } from "../elements/floor";
 import type { BimDocument } from "../core/document";
+import { addTriplanarUVs } from "../utils/uv-projection";
 
 /**
  * Resolve boundary vertices to world-space coordinates.
@@ -79,6 +80,7 @@ export function generateFloorGeometry(
 
     const posAttr = geometry.getAttribute("position");
     if (posAttr && posAttr.count >= 3) {
+      addTriplanarUVs(geometry);
       return geometry;
     }
     geometry.dispose();
@@ -110,5 +112,6 @@ function generateFloorFallback(
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, contract.elevation, 0);
 
+  addTriplanarUVs(geo);
   return geo;
 }

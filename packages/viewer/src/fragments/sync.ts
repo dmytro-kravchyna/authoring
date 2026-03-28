@@ -10,6 +10,7 @@ import { FragmentWriter, type FragmentElementIds, type InstancedPart, type Share
 import { VisState, VisibilityStateMachine } from "./visibility-state";
 import { GeometryCache } from "../utils/geometry-cache";
 import { resolveMaterial } from "../utils/material-resolve";
+import { TextureApplicator } from "./texture-applicator";
 
 interface PendingOp {
   type: "create" | "update";
@@ -23,6 +24,8 @@ export class FragmentSync {
   readonly engine: GeometryEngine;
   private registry: ElementRegistry;
   private overlay: OverlayManager;
+  readonly textureApplicator = new TextureApplicator();
+  private scene: THREE.Scene;
 
   private defaultMaterial = new THREE.MeshLambertMaterial({
     color: new THREE.Color(0.85, 0.85, 0.82),
@@ -125,7 +128,9 @@ export class FragmentSync {
     this.mgr = mgr;
     this.engine = engine;
     this.registry = registry;
+    this.scene = scene;
     this.overlay = new OverlayManager(scene, engine, doc, registry, this.geoCache);
+    this.textureApplicator.setupHooks(doc, mgr);
 
     // Wire reverse-cuts lookup into geometry cache using dependentsOf index.
     // O(k) where k = number of dependents, instead of O(n) scanning all contracts.
@@ -314,7 +319,7 @@ export class FragmentSync {
               if (deleteReqs.length > 0) {
                 await this.mgr.editor.edit(this.mgr.modelId, deleteReqs);
                 await this.updateFragmentHistoryIndex();
-                await this.mgr.update(true);
+                await this.updateAndApplyTextures();
               }
             });
           }
@@ -408,6 +413,12 @@ export class FragmentSync {
   }
 
   async init() {}
+
+  /** Flush fragment updates and re-apply any texture overrides. */
+  private async updateAndApplyTextures() {
+    await this.mgr.update(true);
+    this.textureApplicator.applyTextures(this.doc, this.mgr, this.scene);
+  }
 
   /**
    * Update the reverse dependency index for an element.
@@ -534,7 +545,7 @@ export class FragmentSync {
       }
     }
 
-    await this.mgr.update(true);
+    await this.updateAndApplyTextures();
 
     if (targetIndex < 0) {
       // At -1 (initial state) the delta is empty — all rendering comes
@@ -737,7 +748,7 @@ export class FragmentSync {
         for (const [, model] of this.mgr.fragments.models.list) {
           await model.setVisible(localIds, visible);
         }
-        await this.mgr.update(true);
+        await this.updateAndApplyTextures();
       });
     }
   }
@@ -1348,7 +1359,7 @@ export class FragmentSync {
           if (baseIds.length > 0) await base.setVisible(baseIds, true);
         }
 
-        await this.mgr.update(true);
+        await this.updateAndApplyTextures();
       }
       await this.waitForTilesReady();
       for (const id of restoreIds) {
@@ -1705,7 +1716,7 @@ export class FragmentSync {
       await base.setVisible(localIds, false);
     }
 
-    await this.mgr.update(true);
+    await this.updateAndApplyTextures();
   }
 
   // ── Private: pending ops / flush ─────────────────────────────────
@@ -2006,7 +2017,7 @@ export class FragmentSync {
       // editor.edit() rebuilds the delta model — re-hide extracted elements.
       await this.reHideExtracted();
 
-      await this.mgr.update(true);
+      await this.updateAndApplyTextures();
     }
 
     for (const geo of geometries) geo.dispose();
@@ -2156,7 +2167,7 @@ export class FragmentSync {
       await editor.edit(modelId, allRequests);
       await this.updateFragmentHistoryIndex();
       await this.reHideExtracted();
-      await this.mgr.update(true);
+      await this.updateAndApplyTextures();
     }
 
     // Remove overlays for restored neighbors (fragment now has correct geometry)

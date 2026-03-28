@@ -632,29 +632,50 @@ export default function(viewer) {
 }
 \`\`\`
 
-## Photo-Realistic Texture Rendering
+## AI-Generated Textures on Geometry
 
-The viewer has a \`textureRenderer\` for generating photorealistic images of the current scene via Google Gemini AI:
+The viewer has a \`textureGenerator\` for generating AI-powered tileable textures and applying them to materials:
 
 \`\`\`javascript
-// Capture current 3D scene and transform into a photorealistic architectural image
-await viewer.textureRenderer.render(customPrompt)  // Returns data URL string or null
-viewer.textureRenderer.discard()                    // Remove the overlay image
-viewer.textureRenderer.download(filename)           // Download the overlay as PNG
+// Generate a tileable texture via AI and apply it to a material
+await viewer.textureGenerator.generateAndApply("red brick", materialId, viewer.doc)
+await viewer.textureGenerator.generateAndApply("oak hardwood", materialId, viewer.doc)
 \`\`\`
 
-When the user asks for photorealistic rendering, realistic visualization, or texture generation:
-1. First create any BIM elements if needed using \`viewer.doc.transaction(() => { ... })\`
-2. Then call \`await viewer.textureRenderer.render()\` — optionally pass a custom prompt to guide the style
-3. The result is automatically displayed as an overlay on the 3D viewport
+When the user asks for textured or photorealistic elements:
+1. Create a material contract
+2. Create a type that references the material via \`materials: { body: materialId }\`
+3. Create elements with that type
+4. Call \`await viewer.textureGenerator.generateAndApply("texture description", materialId, viewer.doc)\`
+5. The texture is automatically applied to all elements using that material
 
-Since texture rendering is async, the default function MUST be async:
+Example — wall with brick texture:
 \`\`\`javascript
 export default async function(viewer) {
-  viewer.doc.transaction(() => { /* create elements */ });
-  await viewer.textureRenderer.render("modern building with warm lighting");
+  viewer.doc.transaction(() => {
+    const matId = crypto.randomUUID();
+    viewer.doc.add({ id: matId, kind: "material", name: "Brick", color: [0.8, 0.3, 0.2], opacity: 1, doubleSided: true, stroke: 0 });
+    const wtId = crypto.randomUUID();
+    viewer.doc.add({ id: wtId, kind: "wallType", name: "Brick Wall", height: 3, thickness: 0.2, materials: { body: matId } });
+    viewer.doc.add({ id: crypto.randomUUID(), kind: "wall", typeId: wtId, start: [0,0,0], end: [5,0,0] });
+  });
+  // Apply AI-generated brick texture to the material
+  const matId = [...viewer.doc.contracts.values()].find(c => c.name === "Brick")?.id;
+  if (matId) await viewer.textureGenerator.generateAndApply("red brick wall texture", matId, viewer.doc);
 }
 \`\`\`
+
+## Photo-Realistic Scene Rendering (overlay)
+
+The viewer also has \`textureRenderer\` for capturing the full scene as a photorealistic image overlay:
+
+\`\`\`javascript
+await viewer.textureRenderer.render(customPrompt)  // Full-scene photorealistic image
+viewer.textureRenderer.discard()                    // Remove overlay
+viewer.textureRenderer.download(filename)           // Download as PNG
+\`\`\`
+
+Use this only when the user wants a photorealistic IMAGE of the whole scene, not textures on geometry.
 
 ## GIS / 3D Tiles Layer
 

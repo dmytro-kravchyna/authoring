@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { GeometryEngine } from "@thatopen/fragments";
 import type { ResolvedWall } from "../elements/wall";
+import { addTriplanarUVs } from "../utils/uv-projection";
 
 /** Info about a neighbor wall at a specific endpoint, used for miter cuts. */
 export interface MiterNeighbor {
@@ -73,6 +74,7 @@ export function generateWallGeometry(
     direction: [0, 1, 0],
   });
 
+  addTriplanarUVs(geometry);
   return geometry;
 }
 

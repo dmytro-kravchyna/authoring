@@ -120,7 +120,12 @@
       "Bash(vercel --prod)",
       "Bash(vercel logs:*)",
       "Bash(curl -s -w \"\\\\nHTTP_CODE:%{http_code}\" https://authoring-eight.vercel.app/api/health)",
-      "Bash(vercel inspect:*)"
+      "Bash(vercel inspect:*)",
+      "Bash(find /Users/dmk/Projects/private/authoring -name *thatopen* -type f)",
+      "Bash(node -e \":*)",
+      "Bash(ls /Users/dmk/Projects/private/authoring/packages/viewer/vitest.config*)",
+      "Bash(ls /Users/dmk/Projects/private/authoring/vitest.config*)",
+      "Bash(ls /Users/dmk/Projects/private/authoring/vitest.workspace*)"
     ]
   }
 }

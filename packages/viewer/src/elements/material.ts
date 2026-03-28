@@ -10,6 +10,8 @@ export interface MaterialContract extends BaseContract {
   opacity: number;                  // 0-1
   doubleSided: boolean;
   stroke: number;
+  textureData?: string;             // base64 data URL of AI-generated texture image
+  texturePrompt?: string;           // prompt used to generate the texture
 }
 
 export function isMaterial(c: { kind: string }): c is MaterialContract {
@@ -31,7 +33,7 @@ function randomPastel(): [number, number, number] {
 }
 
 export function createMaterial(
-  options?: Partial<Pick<MaterialContract, "name" | "color" | "opacity" | "doubleSided" | "stroke">>
+  options?: Partial<Pick<MaterialContract, "name" | "color" | "opacity" | "doubleSided" | "stroke" | "textureData" | "texturePrompt">>
 ): MaterialContract {
   return {
     id: crypto.randomUUID(),
@@ -41,6 +43,8 @@ export function createMaterial(
     opacity: options?.opacity ?? 1,
     doubleSided: options?.doubleSided ?? true,
     stroke: options?.stroke ?? 0,
+    ...(options?.textureData && { textureData: options.textureData }),
+    ...(options?.texturePrompt && { texturePrompt: options.texturePrompt }),
   };
 }
 

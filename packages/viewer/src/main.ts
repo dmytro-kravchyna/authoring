@@ -31,7 +31,7 @@ async function main() {
   sidePanel.addTab("materials", "Materials", () => {
     viewer.materialsTab.render(sidePanel.content);
   });
-  const aiTab = new AiChatTab(viewer.doc, viewer.textureRenderer, viewer.gisLayer);
+  const aiTab = new AiChatTab(viewer.doc, viewer.textureRenderer, viewer.textureGenerator, viewer.gisLayer);
   sidePanel.addTab("ai", "AI", () => {
     aiTab.render(sidePanel.content);
   });

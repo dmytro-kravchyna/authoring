@@ -240,12 +240,105 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: width 0.15s ease;
 }
 
 .right-sidebar.collapsed {
   width: 0;
   border-left: none;
   overflow: hidden;
+}
+
+/* ── Right Sidebar Properties Panel ───────────────────── */
+
+.right-sidebar .sidebar-content {
+  padding: 12px;
+}
+
+.right-sidebar .sidebar-content h3 {
+  margin-bottom: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-sideBarTitle-foreground);
+}
+
+.right-sidebar .sidebar-content label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+}
+
+.right-sidebar .sidebar-content input[type="number"],
+.right-sidebar .sidebar-content input[type="text"] {
+  width: 90px;
+  padding: 4px 6px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 2px;
+  font-size: 13px;
+  font-family: inherit;
+  text-align: right;
+  outline: none;
+}
+
+.right-sidebar .sidebar-content input[type="number"]:focus,
+.right-sidebar .sidebar-content input[type="text"]:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.right-sidebar .sidebar-content input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.right-sidebar .sidebar-content select {
+  width: 100%;
+  padding: 4px 6px;
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 2px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  margin-top: 4px;
+}
+
+.right-sidebar .sidebar-content select:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.right-sidebar .sidebar-content button {
+  padding: 2px 8px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: none;
+  border-radius: 2px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.right-sidebar .sidebar-content button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.right-sidebar .sidebar-content .props-hint {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  margin-left: 4px;
+}
+
+.right-sidebar .sidebar-content .props-reset-btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  margin-left: 4px;
 }
 
 /* ── Status Bar ────────────────────────────────────────── */

@@ -155,7 +155,7 @@ export class PropertiesPanel {
     label.appendChild(input);
     if (hint) {
       const span = document.createElement("span");
-      span.style.cssText = "font-size: 10px; color: #666; margin-left: 4px;";
+      span.className = "props-hint";
       span.textContent = hint;
       label.appendChild(span);
     }
@@ -238,7 +238,7 @@ export class PropertiesPanel {
     const resetBtn = document.createElement("button");
     resetBtn.textContent = "reset";
     resetBtn.title = typeDefault != null ? `Reset to type default (${typeDefault})` : "Reset to type default";
-    resetBtn.style.cssText = "font-size: 10px; padding: 1px 6px; margin-left: 4px; border: 1px solid #555; border-radius: 3px; background: #333; color: #aaa; cursor: pointer;";
+    resetBtn.className = "props-reset-btn";
     resetBtn.style.display = hasOverride ? "inline" : "none";
     resetBtn.addEventListener("click", () => onReset());
     wrapper.appendChild(resetBtn);

@@ -10,6 +10,7 @@ import { createColumnType } from "../elements/column-type";
 import { createWindowType } from "../elements/window-type";
 import { createDoorType } from "../elements/door-type";
 import type { TextureRenderer } from "./texture-renderer";
+import type { TextureGenerator } from "./texture-generator";
 import type { GisLayer3d } from "../gis/gis-layer-3d";
 
 export interface ExecutionResult {
@@ -35,6 +36,7 @@ export async function execute(
   doc: BimDocument,
   textureRenderer?: TextureRenderer,
   gisLayer?: GisLayer3d,
+  textureGenerator?: TextureGenerator,
 ): Promise<ExecutionResult> {
   const createdIds: string[] = [];
   const removedIds: string[] = [];
@@ -80,6 +82,10 @@ export async function execute(
       "createFloor",
       "createWindow",
       "createDoor",
+      "createWallType",
+      "createColumnType",
+      "createWindowType",
+      "createDoorType",
       "THREE",
       "wallTypeId",
       "columnTypeId",
@@ -87,8 +93,17 @@ export async function execute(
       "doorTypeId",
       "textureRenderer",
       "gisLayer",
+      "textureGenerator",
+      "generateTexture",
       wrappedCode
     );
+
+    // Helper: generate texture and apply to a material contract
+    const generateTexture = textureGenerator
+      ? async (prompt: string, materialId: string) => {
+          await textureGenerator.generateAndApply(prompt, materialId, doc);
+        }
+      : undefined;
 
     await fn(
       doc,
@@ -97,6 +112,10 @@ export async function execute(
       createFloor,
       createWindow,
       createDoor,
+      createWallType,
+      createColumnType,
+      createWindowType,
+      createDoorType,
       THREE,
       typeIds["wallTypeId"],
       typeIds["columnTypeId"],
@@ -104,6 +123,8 @@ export async function execute(
       typeIds["doorTypeId"],
       textureRenderer,
       gisLayer,
+      textureGenerator,
+      generateTexture,
     );
 
     return { success: true, createdIds, removedIds };

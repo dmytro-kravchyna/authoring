@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import * as THREE from "three";
 
 const GEMINI_KEY_STORAGE = "bim-ai-gemini-key";
-const DEFAULT_GEMINI_KEY = "AIzaSyANMbe-vZ48yTZMzNvaBh7CxQy2rYqmMcU";
+const DEFAULT_GEMINI_KEY = "AIzaSyDxWtzW3jd3vtGlY90ag99A5HfA2yYxQMg";
 
 const DEFAULT_PROMPT =
   "Transform the provided screenshot of a BIM model into a the style of a photorealistic picture of an architecture project similar to the architecture magazines. Preserve the original composition but render all elements as if they were a real picture of a building.";

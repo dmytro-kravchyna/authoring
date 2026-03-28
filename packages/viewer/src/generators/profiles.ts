@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { GeometryEngine } from "@thatopen/fragments";
+import { addTriplanarUVs } from "../utils/uv-projection";
 
 // ---------------------------------------------------------------------------
 // Profile point generators
@@ -270,6 +271,7 @@ export function extrudeProfile(
     const posAttr = geometry.getAttribute("position");
     if (posAttr && posAttr.count >= 3) {
       geometry.translate(position[0], position[1], position[2]);
+      addTriplanarUVs(geometry);
       return geometry;
     }
     geometry.dispose();
@@ -325,5 +327,6 @@ function extrudeProfileFallback(
   }
 
   geo.translate(position[0], position[1], position[2]);
+  addTriplanarUVs(geo);
   return geo;
 }

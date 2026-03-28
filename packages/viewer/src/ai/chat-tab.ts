@@ -5,6 +5,7 @@ import { execute, extractCode, extractSummary } from "./executor";
 import { SessionTracker } from "./session-tracker";
 import { bundleSession } from "./bundler";
 import { TextureRenderer } from "./texture-renderer";
+import type { TextureGenerator } from "./texture-generator";
 import type { GisLayer3d } from "../gis/gis-layer-3d";
 
 interface ChatEntry {
@@ -22,15 +23,18 @@ export class AiChatTab {
   private container: HTMLElement | null = null;
   private isBusy = false;
   private textureRenderer: TextureRenderer;
+  private textureGenerator: TextureGenerator;
   private gisLayer: GisLayer3d;
 
   constructor(
     doc: BimDocument,
     textureRenderer: TextureRenderer,
+    textureGenerator: TextureGenerator,
     gisLayer: GisLayer3d,
   ) {
     this.doc = doc;
     this.textureRenderer = textureRenderer;
+    this.textureGenerator = textureGenerator;
     this.gisLayer = gisLayer;
   }
 
@@ -269,7 +273,7 @@ export class AiChatTab {
       let errorMsg = "";
 
       if (code) {
-        const result = await execute(code, this.doc, this.textureRenderer, this.gisLayer);
+        const result = await execute(code, this.doc, this.textureRenderer, this.gisLayer, this.textureGenerator);
         success = result.success;
         errorMsg = result.error ?? "";
 

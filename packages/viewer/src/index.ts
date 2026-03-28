@@ -46,6 +46,7 @@ import { SnapGroupManager, syncLevelSnapGroups } from "./utils/snap-groups";
 import { ModelClipboard } from "./utils/clipboard";
 import { GisLayer3d } from "./gis/gis-layer-3d";
 import { TextureRenderer } from "./ai/texture-renderer";
+import { TextureGenerator } from "./ai/texture-generator";
 
 // ── Public types ──────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ export interface ViewerInstance {
   clipboard: ModelClipboard;
   gisLayer: GisLayer3d;
   textureRenderer: TextureRenderer;
+  textureGenerator: TextureGenerator;
 
   // UI panels (render into shell-provided containers)
   typesTab: TypesTab;
@@ -356,6 +358,10 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
 
   // --- Texture Renderer ---
   const textureRenderer = new TextureRenderer(renderer, scene, camera, container);
+  const textureGenerator = new TextureGenerator();
+
+  // Default to select tool so click-to-select works immediately
+  toolMgr.setTool(selectTool);
 
   setStatus("Ready. Select a tool to begin.");
 
@@ -453,6 +459,7 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
     clipboard,
     gisLayer,
     textureRenderer,
+    textureGenerator,
     typesTab,
     levelsTab,
     materialsTab,
@@ -510,6 +517,7 @@ export { PropertiesPanel } from "./ui/properties";
 
 // AI / GIS
 export { TextureRenderer } from "./ai/texture-renderer";
+export { TextureGenerator } from "./ai/texture-generator";
 export { GisLayer3d } from "./gis/gis-layer-3d";
 
 // Factory functions for creating default type contracts

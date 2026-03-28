@@ -86,10 +86,25 @@ async function bootstrap() {
   viewer.toolMgr.onToolChanged = (name: string | null) => {
     statusBar.updateItem("tool", name ? `Tool: ${name}` : "");
     toolbar.highlightTool(name);
+    // Hide properties panel when leaving select mode
+    if (name !== "select") {
+      rightSidebar.classList.add("collapsed");
+    } else {
+      // Re-show properties if there's an active selection
+      const selected = viewer.selectTool.getSelectedContract();
+      if (selected) {
+        rightSidebar.classList.remove("collapsed");
+        rightContent.innerHTML = "";
+        viewer.propsPanel.show(selected, rightContent);
+      }
+    }
   };
 
   // ── Wire selection → right sidebar properties ──
   viewer.onSelectionChanged = (contract) => {
+    // Only show properties when the select tool is active
+    const isSelectMode = viewer.toolMgr.getActiveTool()?.name === "select";
+    if (!isSelectMode) return;
     if (contract) {
       rightSidebar.classList.remove("collapsed");
       rightContent.innerHTML = "";
