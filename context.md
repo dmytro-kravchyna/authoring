@@ -1,4 +1,4 @@
-# BIM Web Authoring Tool
+# Revit Web Authoring Tool
 
 ## Documentation Convention
 
@@ -22,7 +22,7 @@ A web-based BIM (Building Information Modeling) authoring tool. Users place and 
 **We own and maintain the fragments library** (`@thatopen/fragments`). It lives in a sibling repo at `../engine_fragment/packages/fragments/`. When the modeling library needs new fragment capabilities (e.g., `onViewUpdated`, `clearHiddenForEdit`), we add them directly — no workarounds needed. Changes there require rebuilding and copying the worker:
 ```
 cd ../engine_fragment/packages/fragments && yarn build
-cp dist/Worker/worker.mjs public/worker.mjs
+cp dist/Worker/worker.mjs ../../revit/public/worker.mjs
 ```
 
 ```
@@ -40,12 +40,23 @@ src/
 │   ├── window.ts        # Window element definition
 │   ├── floor.ts         # Floor element definition (boundary polygon, connectedTo walls)
 │   ├── column.ts        # Column element definition (Gate 7 extensibility proof)
+│   ├── beam.ts          # Beam element definition (two-point profile extrusion, arbitrary direction)
 │   ├── wall-type.ts     # Wall type definition (data-only, shared params: height, thickness)
 │   ├── window-type.ts   # Window type definition (data-only, shared params: width, height, sillHeight)
 │   ├── column-type.ts   # Column type definition (data-only, shared params: height, width)
+│   ├── beam-type.ts     # Beam type definition (data-only, shared params: height, width, profileType)
+│   ├── furniture.ts     # Furniture element definition (generic placeable, generator-keyed geometry)
+│   ├── furniture-type.ts # Furniture type definition (data-only, generator key + dimensions)
+│   ├── railing.ts       # Railing element definition (path-following posts + rail)
+│   ├── railing-type.ts  # Railing type definition (data-only, height, post spacing, rail dims)
+│   ├── stair.ts         # Stair element definition (two-point, composes treads + risers + railings)
+│   ├── stair-type.ts    # Stair type definition (data-only, shape, riser/tread dims, railing height)
 │   └── level.ts         # Level definition (data-only, elevation-based horizontal plane)
 ├── generators/
 │   ├── engine.ts        # GeometryEngine singleton (WASM init)
+│   ├── furniture.ts     # Furniture generator registry + built-in generators (desk, chair, table)
+│   ├── railing.ts       # Railing geometry generator (posts at intervals + top rail along polyline)
+│   ├── stair.ts         # Stair geometry generator (straight/L/U shapes, auto-composed railings)
 │   ├── profiles.ts      # Profile extrusion primitive (rectangleProfile, circleProfile, hProfile, extrudeProfile)
 │   ├── wall.ts          # WallContract → BufferGeometry (with boolean void cuts)
 │   ├── window.ts        # WindowContract → BufferGeometry (frame + glass + void)
@@ -66,13 +77,20 @@ src/
 │   ├── window-tool.ts   # Hover wall → preview → click to place window
 │   ├── floor-tool.ts    # Click wall endpoints / free points → draw boundary polygon → create floor
 │   ├── column-tool.ts   # Click to place column (with snap preview)
+│   ├── beam-tool.ts     # Click two points → create beam (with profile preview)
+│   ├── furniture-tool.ts # Click to place furniture (single-click, like columns)
+│   ├── railing-tool.ts  # Multi-click open polyline → create railing
+│   ├── stair-tool.ts    # Click two points → create stair (bottom → top)
 │   ├── select-tool.ts   # Multi-select, drag handles, shared corner drag, delete
-│   └── move-tool.ts     # Two-click move: pick base → pick destination, with stretch targets + hosted element extraction
+│   ├── move-tool.ts     # Two-click move: pick base → pick destination, with stretch targets + hosted element extraction
+│   └── rotate-tool.ts   # Three-click rotate: pick pivot → pick reference → pick target angle
 ├── handles/
 │   ├── base.ts          # Reusable draggable handle mesh
 │   ├── wall-handles.ts  # Start/end/height handles for wall editing
 │   ├── floor-handles.ts # Vertex handles + profile outline for floor editing
-│   └── column-handles.ts # Base handle for column drag
+│   ├── beam-handles.ts  # Start/end handles for beam editing
+│   ├── railing-handles.ts # Vertex handles on railing path points
+│   └── stair-handles.ts  # Start/end handles for stair editing (Y preserved)
 └── ui/
     ├── toolbar.ts           # Tool buttons
     ├── properties.ts        # Property panel for selected element
@@ -325,7 +343,7 @@ Access: `sync.vsm` is public readonly. Use `sync.vsm.getState(id)`, `sync.vsm.is
 When an element is selected, it's "extracted": state transitions Normal → Extracted, hidden in fragments via `setVisible(false)` on both base and delta models, shown as an overlay mesh. All edits during selection update only the overlay (instant) and mark the element dirty. On deselect, state transitions Extracted → Restoring, **all** restored elements are flushed to the delta model (not just dirty ones), and the overlay is removed after tiles are ready (Restoring → Normal). Flushing all elements to the delta (instead of relying on base `setVisible(true)` for non-dirty elements) prevents the tile system from leaving base-model elements invisible after delta rebuilds.
 
 ### Invariant Checking
-`sync.assertInvariants()` validates internal consistency — call in dev builds, tests, or from the browser console (`__bim.sync.assertInvariants()`). Checks 10 categories: (1) every non-Normal vsm entry has a contract (all states, not just Extracted/Restoring), (2) extracted elements have overlays, (3) extracted elements have priorRelationships snapshots, (4) priorRelationships only for Extracted/Restoring, (5) `dependentsOf` matches registry relationships (bidirectional), (6) draggingIds are extracted, (7) dirty flags only on Extracted/Restoring, (8) pendingOps reference existing contracts, (9) tempHidden references existing contracts, (10) no orphan overlays (overlay exists but element is Normal with no pending op). Throws with a list of all violations found. No side effects (except lazy `dependentsOf` rebuild if dirty) — safe to call at any time.
+`sync.assertInvariants()` validates internal consistency — call in dev builds, tests, or from the browser console (`__revit.sync.assertInvariants()`). Checks 10 categories: (1) every non-Normal vsm entry has a contract (all states, not just Extracted/Restoring), (2) extracted elements have overlays, (3) extracted elements have priorRelationships snapshots, (4) priorRelationships only for Extracted/Restoring, (5) `dependentsOf` matches registry relationships (bidirectional), (6) draggingIds are extracted, (7) dirty flags only on Extracted/Restoring, (8) pendingOps reference existing contracts, (9) tempHidden references existing contracts, (10) no orphan overlays (overlay exists but element is Normal with no pending op). Throws with a list of all violations found. No side effects (except lazy `dependentsOf` rebuild if dirty) — safe to call at any time.
 
 ### Edit Queue Serialization
 All async fragment operations are serialized via a promise chain. Without this, rapid operations cause race conditions.
@@ -334,7 +352,7 @@ All async fragment operations are serialized via a promise chain. Without this, 
 All modeling operations happen on an active work plane. `ToolManager` owns the current `WorkPlane` (origin, normal, xAxis, yAxis). Raycasting projects the cursor onto this plane. Wall/window/floor generators derive the base elevation from the contract's Y coordinate (e.g., `contract.start[1]`), so geometry renders at the correct height. The preview geometry must also use the same elevation — if `engine.getWall()` gets `elevation: 0` while the contract stores Y=3, the preview and final geometry will mismatch. Default plane: XZ ground at Y=0. Change at runtime via `toolMgr.setWorkPlane(createGroundPlane(elevation))`.
 
 ### Stress Test
-`generateStressTest(doc, opts)` in `utils/stress-test.ts` creates an N×M grid of connected rooms. Default 10×10 produces ~220 walls, ~110 windows, ~100 floors (~430 elements). Use the "Stress 10×10" button in the debug bar or `__bim.stressTest({ rows: 5, cols: 5 })` from the console. Custom options: `rows`, `cols`, `cellSize`, `height`, `thickness`, `windowEvery`, `floors`.
+`generateStressTest(doc, opts)` in `utils/stress-test.ts` creates an N×M grid of connected rooms. Default 10×10 produces ~220 walls, ~110 windows, ~100 floors (~430 elements). Use the "Stress 10×10" button in the debug bar or `__revit.stressTest({ rows: 5, cols: 5 })` from the console. Custom options: `rows`, `cols`, `cellSize`, `height`, `thickness`, `windowEvery`, `floors`.
 
 ### Overlay Material
 Uses negative `polygonOffset` (factor/units = -1) to push the overlay inward toward the camera, preventing z-fighting with fragment geometry. Combined with `renderOrder = 1` to draw on top of stale fragments.
@@ -376,7 +394,7 @@ const geo = extrudeProfile(engine, {
 
 Uses `engine.getExtrusion()` (WASM) with automatic Three.js `ExtrudeGeometry` fallback. Supports holes via `holes` option.
 
-**Reference implementation:** The column element (`elements/column.ts`) uses `extrudeProfile()` — copy it as a starting point for new profile-extruded element types.
+**Reference implementations:** Column (`elements/column.ts`) — single-point vertical extrusion. Beam (`elements/beam.ts`) — two-point arbitrary-direction extrusion with per-type profile selection (rectangle, H, T, C, L, circle). Beam uses explicit basis construction (`makeBasis`) instead of `setFromUnitVectors` so the profile's height axis stays vertical regardless of beam direction. The `rotation` field on the beam contract applies additional roll around the beam axis.
 
 **What's available but not yet wrapped:**
 - `engine.getProfile()` — structural profiles (H/C/Z/T/L with fillets) as point data. Could feed into `extrudeProfile()`.
@@ -509,6 +527,12 @@ On restore, the same cascade runs in reverse. Each group must be tracked in `res
 **Spatial index (2.10):** Endpoint, midpoint, perpendicular, and wall body snaps use `doc.spatialIndex` (RBush R-tree) for O(log n) broadphase. Falls back to linear scan if index is absent (e.g., in tests).
 
 **Sticky snap:** Extension snaps use a "sticky" mechanism — when you snap to a wall (any snap type), that wall's extensions stay available regardless of cursor distance for 3 seconds (`STICKY_TIMEOUT_MS`). This prevents the frustrating UX of losing an extension guide while following it. Sticky state is module-level (`stickySnaps` map), cleared on tool deactivation via `clearStickySnaps()`. `recordStickySnap()` is called by all snap consumers (tools + handles) on each pointer move.
+
+**Perpendicular extensions for vertical edges:** `perpDirections(d)` handles both horizontal and vertical edges. For horizontal/angled edges, one perpendicular in XZ. For vertical edges (columns), two perpendiculars (X and Z axes) forming a crosshair. Used in both extension intersection and extension snap sections.
+
+**Anchor-on-body perpendicular:** When the anchor (start point of a two-click tool) projects onto an edge body, perpendicular virtual axes are added at the anchor point. This enables drawing perpendicular from an arbitrary point on a beam or wall, not just from endpoints.
+
+**Extension intersection reference lines:** Virtual axes carry an `origin` field tracking the real element endpoint. Reference lines draw from the intersection to the origin, not to the virtual axis endpoint — ensures dashed lines reach the actual element.
 
 **Snap extensibility (3.4b):** Element types register custom snap points via `getSnapPoints()` on `ElementTypeDefinition`. Returns `{ position: Vector3, type: "endpoint" | "midpoint" | "center" }[]`. The snap system reads `doc.registry` automatically — no caller changes needed when adding new element types. The spatial index computes generic AABBs from snap points for unknown element types (fallback in `genericItem()`), so broadphase queries work out of the box.
 
@@ -673,7 +697,7 @@ registry.register({
 
 ## Debugging
 
-- **`__bim.sync.debugDump()`** — logs full internal state to the console: vsm entries (element ID → state + dirty), active overlays, pendingOps, dependentsOf index, priorRelationships, fragment history index, edit queue status. Returns the dump object for programmatic inspection. Also shows a summary table with counts.
-- **`__bim.sync.assertInvariants()`** — validates internal consistency (10 categories, see `assertInvariants()` in sync.ts). Throws with a list of all violations found. No side effects (except lazy `dependentsOf` rebuild if dirty). Check #5 (dependentsOf) skips relationships to deleted targets. Check #10 (orphan overlays) is skipped when async work is pending (transient state during flush). Auto-assert checkbox in the debug bar runs this after every transaction.
+- **`__revit.sync.debugDump()`** — logs full internal state to the console: vsm entries (element ID → state + dirty), active overlays, pendingOps, dependentsOf index, priorRelationships, fragment history index, edit queue status. Returns the dump object for programmatic inspection. Also shows a summary table with counts.
+- **`__revit.sync.assertInvariants()`** — validates internal consistency (10 categories, see `assertInvariants()` in sync.ts). Throws with a list of all violations found. No side effects (except lazy `dependentsOf` rebuild if dirty). Check #5 (dependentsOf) skips relationships to deleted targets. Check #10 (orphan overlays) is skipped when async work is pending (transient state during flush). Auto-assert checkbox in the debug bar runs this after every transaction.
 - Uncomment lines 20 and 1474-1478 in `edit-function.ts` to log full delta model data. Rebuild worker after.
 - `engine_fragment/packages/fragments/src/FragmentsModels/test.ts` has commented-out API usage examples (visibility, raycast, highlight, bounding boxes, sections, geometry extraction).

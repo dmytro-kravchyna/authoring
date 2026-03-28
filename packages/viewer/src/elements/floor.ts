@@ -89,6 +89,24 @@ export const floorElement: ElementTypeDefinition = {
     };
   },
 
+  applyRotation(contract, angle, pivot) {
+    const floor = contract as FloorContract;
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    return {
+      ...floor,
+      boundary: floor.boundary.map((v) => {
+        if (v.type === "free") {
+          const dx = v.position[0] - pivot[0], dz = v.position[2] - pivot[2];
+          return {
+            ...v,
+            position: [pivot[0] + dx * cos - dz * sin, v.position[1], pivot[2] + dx * sin + dz * cos] as [number, number, number],
+          };
+        }
+        return v;
+      }),
+    };
+  },
+
   remapIds(contract, idMap) {
     const floor = contract as FloorContract;
     return {

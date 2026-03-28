@@ -91,6 +91,8 @@ export class FloatingToolbar {
         if (!file) return;
         try {
           await viewer.load(file);
+          viewer.typesTab.refresh();
+          viewer.levelsTab.refresh();
           viewer.setStatus("Loaded.");
         } catch (e) {
           console.error("Load failed:", e);

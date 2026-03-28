@@ -56,6 +56,8 @@ export interface Tool {
   onPointerMove(event: PointerEvent, intersection: THREE.Vector3 | null): void;
   onPointerUp(event: PointerEvent): void;
   onKeyDown(event: KeyboardEvent): void;
+  /** Render tool-specific creation options in the side panel (optional). */
+  renderCreationOptions?(container: HTMLElement): void;
 }
 
 // ── Tool manager ───────────────────────────────────────────────────

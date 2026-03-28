@@ -193,6 +193,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   padding: 4px;
   background: var(--vscode-titleBar-activeBackground);
@@ -200,6 +201,8 @@ body {
   border-radius: 6px;
   z-index: 15;
   box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+  max-width: 90vw;
+  justify-content: center;
 }
 
 .floating-toolbar button {
@@ -249,10 +252,63 @@ body {
   overflow: hidden;
 }
 
-/* ── Right Sidebar Properties Panel ───────────────────── */
+/* ── Right Sidebar Header (single-panel mode) ─────────── */
+
+.right-sidebar-header {
+  height: 35px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-sideBarTitle-foreground);
+  flex-shrink: 0;
+}
+
+/* ── Right Sidebar Tab Bar ────────────────────────────── */
+
+.right-tab-bar {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  overflow-x: auto;
+}
+
+.right-tab-bar button {
+  padding: 6px 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0.6;
+  transition: opacity 0.1s, border-color 0.1s;
+}
+
+.right-tab-bar button:hover {
+  opacity: 1;
+}
+
+.right-tab-bar button.active {
+  opacity: 1;
+  border-bottom-color: var(--vscode-focusBorder);
+}
+
+.right-tab-bar.single-tab {
+  display: none;
+}
+
+/* ── Right Sidebar Content ────────────────────────────── */
 
 .right-sidebar .sidebar-content {
   padding: 12px;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .right-sidebar .sidebar-content h3 {

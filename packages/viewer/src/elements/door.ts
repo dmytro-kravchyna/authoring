@@ -168,6 +168,10 @@ export const doorElement: ElementTypeDefinition = {
     return null; // Hosted elements move with their host wall
   },
 
+  applyRotation() {
+    return null; // Hosted elements rotate with their host wall
+  },
+
   remapIds(contract, idMap) {
     const door = contract as DoorContract;
     const newHostId = idMap.get(door.hostId);

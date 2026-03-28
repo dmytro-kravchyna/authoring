@@ -1,53 +1,28 @@
 import * as THREE from "three";
-import type { GeometryEngine } from "@thatopen/fragments";
 import type { Tool, ToolManager } from "./tool-manager";
 import type { BimDocument } from "../core/document";
 import type { ContractId } from "../core/contracts";
-import type { ColumnTypeContract } from "../elements/column-type";
-import { createColumn } from "../elements/column";
+import type { FurnitureTypeContract } from "../elements/furniture-type";
+import { createFurniture } from "../elements/furniture";
+import { generateFurniture } from "../generators/furniture";
 import { snapPoint, SnapIndicator, recordStickySnap } from "../utils/snap";
 import { PREVIEW_MATERIAL } from "../utils/material-resolve";
-import {
-  rectangleProfile,
-  circleProfile,
-  hProfile,
-  tProfile,
-  cProfile,
-  lProfile,
-  extrudeProfile,
-} from "../generators/profiles";
-import type { BeamProfileType } from "../elements/beam-type";
 
-function getColumnPreviewProfile(profileType: BeamProfileType, width: number): number[] {
-  switch (profileType) {
-    case "rectangle": return rectangleProfile(width, width);
-    case "circle": return circleProfile(width / 2);
-    case "h": return hProfile(width, width, width * 0.15, width * 0.1);
-    case "t": return tProfile(width, width, width * 0.15, width * 0.1);
-    case "c": return cProfile(width, width, width * 0.15, width * 0.1);
-    case "l": return lProfile(width, width, width * 0.15);
-    default: return rectangleProfile(width, width);
-  }
-}
-
-export class ColumnTool implements Tool {
-  name = "column";
-  typeKind = "columnType";
+export class FurnitureTool implements Tool {
+  name = "furniture";
+  typeKind = "furnitureType";
   private doc: BimDocument;
   private scene: THREE.Scene;
-  private engine: GeometryEngine;
   private toolMgr: ToolManager;
   private snapIndicator: SnapIndicator;
   private preview: THREE.Mesh | null = null;
 
-  /** Active column type ID — must be set before placing columns. */
   typeId: ContractId | null = null;
   levelId: ContractId | null = null;
 
-  constructor(doc: BimDocument, scene: THREE.Scene, engine: GeometryEngine, toolMgr: ToolManager) {
+  constructor(doc: BimDocument, scene: THREE.Scene, toolMgr: ToolManager) {
     this.doc = doc;
     this.scene = scene;
-    this.engine = engine;
     this.toolMgr = toolMgr;
     this.snapIndicator = new SnapIndicator(scene);
   }
@@ -71,11 +46,11 @@ export class ColumnTool implements Tool {
     });
     const pos = result.position;
 
-    const column = createColumn([pos.x, pos.y, pos.z], this.typeId);
-    if (this.levelId) column.levelId = this.levelId;
+    const furniture = createFurniture([pos.x, pos.y, pos.z], this.typeId);
+    if (this.levelId) furniture.levelId = this.levelId;
 
     this.clearPreview();
-    this.doc.add(column);
+    this.doc.add(furniture);
   }
 
   onPointerMove(_event: PointerEvent, intersection: THREE.Vector3 | null) {
@@ -100,18 +75,16 @@ export class ColumnTool implements Tool {
   onKeyDown() {}
 
   private updatePreview(pos: THREE.Vector3) {
-    const typeContract = this.typeId ? this.doc.contracts.get(this.typeId) as ColumnTypeContract | undefined : undefined;
-    const height = typeContract?.height ?? 3.0;
-    const width = typeContract?.width ?? 0.3;
-    const profileType: BeamProfileType = typeContract?.profileType ?? "rectangle";
+    const typeContract = this.typeId
+      ? (this.doc.contracts.get(this.typeId) as FurnitureTypeContract | undefined)
+      : undefined;
+    const generator = typeContract?.generator ?? "desk";
+    const width = typeContract?.width ?? 1.2;
+    const depth = typeContract?.depth ?? 0.6;
+    const height = typeContract?.height ?? 0.75;
 
-    const profile = getColumnPreviewProfile(profileType, width);
-    const geo = extrudeProfile(this.engine, {
-      profile,
-      position: [pos.x, pos.y, pos.z],
-      direction: [0, 1, 0],
-      length: height,
-    });
+    const geo = generateFurniture(generator, width, depth, height);
+    geo.translate(pos.x, pos.y, pos.z);
 
     if (this.preview) {
       this.preview.geometry.dispose();
@@ -121,8 +94,6 @@ export class ColumnTool implements Tool {
       this.preview.renderOrder = 5;
       this.scene.add(this.preview);
     }
-    // extrudeProfile already positions the geometry, reset mesh position
-    this.preview.position.set(0, 0, 0);
   }
 
   private clearPreview() {

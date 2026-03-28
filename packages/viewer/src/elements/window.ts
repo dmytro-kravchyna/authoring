@@ -177,6 +177,10 @@ export const windowElement: ElementTypeDefinition = {
     return null; // Hosted elements move with their host wall
   },
 
+  applyRotation() {
+    return null; // Hosted elements rotate with their host wall
+  },
+
   remapIds(contract, idMap) {
     const win = contract as WindowContract;
     const newHostId = idMap.get(win.hostId);

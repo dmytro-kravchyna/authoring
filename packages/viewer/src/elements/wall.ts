@@ -365,6 +365,16 @@ export const wallElement: ElementTypeDefinition = {
     };
   },
 
+  applyRotation(contract, angle, pivot) {
+    const wall = contract as WallContract;
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const rotXZ = (p: [number, number, number]): [number, number, number] => {
+      const dx = p[0] - pivot[0], dz = p[2] - pivot[2];
+      return [pivot[0] + dx * cos - dz * sin, p[1], pivot[2] + dx * sin + dz * cos];
+    };
+    return { ...wall, start: rotXZ(wall.start), end: rotXZ(wall.end) };
+  },
+
   remapIds(contract, idMap) {
     const wall = contract as WallContract;
     return {

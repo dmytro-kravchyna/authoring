@@ -110,6 +110,21 @@ export function snapPoint(
   return result;
 }
 
+/**
+ * Compute perpendicular directions for extension lines.
+ * For horizontal/angled edges: one perpendicular in the XZ plane.
+ * For vertical edges: two perpendiculars (along X and Z) forming a crosshair.
+ */
+function perpDirections(d: THREE.Vector3): THREE.Vector3[] {
+  const perp = new THREE.Vector3(-d.z, 0, d.x);
+  if (perp.lengthSq() > 1e-6) {
+    perp.normalize();
+    return [perp];
+  }
+  // Vertical edge — perpendicular in XZ is degenerate, use X and Z axes
+  return [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 1)];
+}
+
 function snapPointCore(
   point: THREE.Vector3,
   doc: BimDocument,
@@ -378,21 +393,38 @@ function snapPointCore(
     let bestDist = Infinity;
     let bestPos: THREE.Vector3 | null = null;
 
-    const axes: { start: THREE.Vector3; end: THREE.Vector3; dir: THREE.Vector3; id: ContractId; absYDelta: number }[] = [];
+    const axes: { start: THREE.Vector3; end: THREE.Vector3; dir: THREE.Vector3; origin: THREE.Vector3; id: ContractId; absYDelta: number }[] = [];
     for (const { id, edge, absYDelta } of extensionCandidates(constrainedPoint.x, constrainedPoint.z, extThreshold * 5)) {
       const s = new THREE.Vector3(...edge.start);
       const e = new THREE.Vector3(...edge.end);
       const d = new THREE.Vector3().subVectors(e, s);
-      if (d.length() < 0.001) continue;
+      const edgeLen = d.length();
+      if (edgeLen < 0.001) continue;
       d.normalize();
-      axes.push({ start: s, end: e, dir: d, id, absYDelta });
+      axes.push({ start: s, end: e, dir: d, origin: s, id, absYDelta });
 
       // Perpendicular extension: add virtual axes perpendicular to the edge
       // at both endpoints. These let you snap to positions aligned
-      // perpendicularly with wall endpoints (like extension snaps but at 90°).
-      const perpDir = new THREE.Vector3(-d.z, 0, d.x); // 90° in XZ
-      axes.push({ start: s.clone(), end: s.clone().add(perpDir), dir: perpDir.clone(), id, absYDelta });
-      axes.push({ start: e.clone(), end: e.clone().add(perpDir), dir: perpDir.clone(), id, absYDelta });
+      // perpendicularly with endpoints (like extension snaps but at 90°).
+      // For vertical edges, generates crosshair axes (X and Z).
+      // `origin` tracks the real element endpoint for reference lines.
+      for (const perpDir of perpDirections(d)) {
+        axes.push({ start: s.clone(), end: s.clone().add(perpDir), dir: perpDir.clone(), origin: s.clone(), id, absYDelta });
+        axes.push({ start: e.clone(), end: e.clone().add(perpDir), dir: perpDir.clone(), origin: e.clone(), id, absYDelta });
+      }
+      // If anchor sits on this edge body, add perpendicular axes at anchor point
+      if (options.anchor) {
+        const toAnchor = options.anchor.clone().sub(s);
+        const t = toAnchor.dot(d);
+        if (t > 0.01 && t < edgeLen - 0.01) {
+          const foot = s.clone().addScaledVector(d, t);
+          if (options.anchor.distanceTo(foot) < 0.1) {
+            for (const perpDir of perpDirections(d)) {
+              axes.push({ start: foot.clone(), end: foot.clone().add(perpDir), dir: perpDir.clone(), origin: foot.clone(), id, absYDelta });
+            }
+          }
+        }
+      }
     }
 
     let bestRef1: THREE.Vector3 | null = null;
@@ -415,10 +447,10 @@ function snapPointCore(
         if (d < extThreshold && d < bestDist) {
           bestDist = d;
           bestPos = intersection;
-          bestRef1 = intersection.distanceTo(axes[i].start) < intersection.distanceTo(axes[i].end)
-            ? axes[i].start.clone() : axes[i].end.clone();
-          bestRef2 = intersection.distanceTo(axes[j].start) < intersection.distanceTo(axes[j].end)
-            ? axes[j].start.clone() : axes[j].end.clone();
+          // Use the origin (real element endpoint) for reference lines,
+          // not the virtual axis start/end which may be offset.
+          bestRef1 = axes[i].origin.clone();
+          bestRef2 = axes[j].origin.clone();
         }
       }
     }
@@ -438,22 +470,43 @@ function snapPointCore(
 
     // Collect real extension candidates + perpendicular virtual edges.
     // For every extension candidate, add perpendicular axes at both
-    // endpoints so you can snap perpendicularly to any recently-interacted wall.
+    // endpoints so you can snap perpendicularly to any recently-interacted element.
+    // For vertical edges (columns), generates crosshair axes (X and Z).
+    // If anchor sits on an edge body, also add perpendicular axes at the anchor
+    // point — enables drawing perpendicular from an arbitrary point on a beam.
     const extCands = extensionCandidates(constrainedPoint.x, constrainedPoint.z, extThreshold * 5);
     const allExtEdges: EdgeCandidate[] = [...extCands];
     for (const { id, edge, absYDelta } of extCands) {
       const s = new THREE.Vector3(...edge.start);
       const e = new THREE.Vector3(...edge.end);
       const d = new THREE.Vector3().subVectors(e, s);
-      if (d.length() < 0.001) continue;
+      const edgeLen = d.length();
+      if (edgeLen < 0.001) continue;
       d.normalize();
-      const perpDir = new THREE.Vector3(-d.z, 0, d.x);
-      // Perpendicular axis at start endpoint
-      const perpEndS: [number, number, number] = [s.x + perpDir.x, s.y + perpDir.y, s.z + perpDir.z];
-      allExtEdges.push({ id, edge: { ...edge, start: edge.start, end: perpEndS, expansion: 0 }, absYDelta });
-      // Perpendicular axis at end endpoint
-      const perpEndE: [number, number, number] = [e.x + perpDir.x, e.y + perpDir.y, e.z + perpDir.z];
-      allExtEdges.push({ id, edge: { ...edge, start: edge.end, end: perpEndE, expansion: 0 }, absYDelta });
+      for (const perpDir of perpDirections(d)) {
+        // Perpendicular axis at start endpoint
+        const perpEndS: [number, number, number] = [s.x + perpDir.x, s.y + perpDir.y, s.z + perpDir.z];
+        allExtEdges.push({ id, edge: { ...edge, start: edge.start, end: perpEndS, expansion: 0 }, absYDelta });
+        // Perpendicular axis at end endpoint
+        const perpEndE: [number, number, number] = [e.x + perpDir.x, e.y + perpDir.y, e.z + perpDir.z];
+        allExtEdges.push({ id, edge: { ...edge, start: edge.end, end: perpEndE, expansion: 0 }, absYDelta });
+      }
+      // If anchor projects onto this edge body, add perpendicular axes at anchor
+      if (options.anchor) {
+        const toAnchor = options.anchor.clone().sub(s);
+        const t = toAnchor.dot(d);
+        if (t > 0.01 && t < edgeLen - 0.01) {
+          const foot = s.clone().addScaledVector(d, t);
+          const distToEdge = options.anchor.distanceTo(foot);
+          if (distToEdge < 0.1) {
+            const anchorPt: [number, number, number] = [foot.x, foot.y, foot.z];
+            for (const perpDir of perpDirections(d)) {
+              const perpEnd: [number, number, number] = [foot.x + perpDir.x, foot.y + perpDir.y, foot.z + perpDir.z];
+              allExtEdges.push({ id, edge: { ...edge, start: anchorPt, end: perpEnd, expansion: 0 }, absYDelta });
+            }
+          }
+        }
+      }
     }
 
     for (const { id, edge, absYDelta } of allExtEdges) {

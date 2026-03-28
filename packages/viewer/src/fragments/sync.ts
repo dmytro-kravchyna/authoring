@@ -1088,7 +1088,7 @@ export class FragmentSync {
 
   /**
    * Log full internal state to the console for debugging.
-   * Call from browser console: `__bim.sync.debugDump()`
+   * Call from browser console: `__revit.sync.debugDump()`
    */
   debugDump(): void {
     const states = new Map<string, { id: ContractId; dirty: boolean }[]>();
@@ -1405,7 +1405,7 @@ export class FragmentSync {
       if (!skipOverlays) {
         this.overlay.set(related);
       }
-      if (this.isExtracted(rel.targetId)) {
+      if (this.isExtracted(rel.targetId) || this.vsm.getState(rel.targetId) === VisState.Restoring) {
         this.vsm.markDirty(rel.targetId);
       }
       if (scheduleWrites) {
@@ -1426,7 +1426,7 @@ export class FragmentSync {
         if (!skipOverlays) {
           this.overlay.set(related);
         }
-        if (this.isExtracted(priorId)) {
+        if (this.isExtracted(priorId) || this.vsm.getState(priorId) === VisState.Restoring) {
           this.vsm.markDirty(priorId);
         }
         if (scheduleWrites) {
@@ -1462,7 +1462,7 @@ export class FragmentSync {
         if (!skipOverlays) {
           this.overlay.set(dep);
         }
-        if (this.isExtracted(depId)) {
+        if (this.isExtracted(depId) || this.vsm.getState(depId) === VisState.Restoring) {
           this.vsm.markDirty(depId);
         }
         if (scheduleWrites) {

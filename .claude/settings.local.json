@@ -134,7 +134,27 @@
       "Bash(done)",
       "Bash(find /Users/dmk/Projects/private/authoring -name *.sql -o -name *migrations* -o -name *prisma* -o -name *drizzle*)",
       "Bash(find /Users/dmk/Projects/private/authoring -name .env* -o -name *.env)",
-      "Bash(find /Users/dmk/Projects/private/authoring/packages -name gis* -type f)"
+      "Bash(find /Users/dmk/Projects/private/authoring/packages -name gis* -type f)",
+      "Bash(ls packages/shell/vite.config.*)",
+      "Bash(ls packages/viewer/vite.config.*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(curl -s https://raw.githubusercontent.com/agviegas/authoring/main/packages/viewer/src/tools/select-tool.ts)",
+      "Bash(git fetch:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(curl -s https://raw.githubusercontent.com/agviegas/authoring/main/packages/viewer/src/fragments/sync.ts)",
+      "Read(//tmp/**)",
+      "Bash(curl -s https://raw.githubusercontent.com/agviegas/authoring/main/packages/viewer/src/fragments/manager.ts)",
+      "Bash(curl -s https://raw.githubusercontent.com/agviegas/authoring/main/packages/viewer/src/core/registry.ts)",
+      "Bash(curl -s -I https://github.com/agviegas/authoring)",
+      "Bash(wc -l /tmp/upstream_*.ts /Users/dmk/Projects/private/authoring/packages/viewer/src/ui/*.ts /Users/dmk/Projects/private/authoring/packages/viewer/src/tools/*.ts /Users/dmk/Projects/private/authoring/packages/viewer/src/utils/snap.ts)",
+      "Bash(ls -la /Users/dmk/Projects/private/authoring/packages/viewer/src/elements/terrain*.ts)",
+      "Bash(ls /Users/dmk/Projects/private/authoring/packages/viewer/vite.config.*)",
+      "Bash(ls /Users/dmk/Projects/private/authoring/packages/shell/vite.config.*)",
+      "Bash(ls /Users/dmk/Projects/private/authoring/packages/viewer/*.html /Users/dmk/Projects/private/authoring/packages/shell/*.html)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }

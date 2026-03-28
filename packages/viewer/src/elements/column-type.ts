@@ -1,5 +1,6 @@
 import type { ElementTypeDefinition, ElementRelationship } from "../core/registry";
 import type { BaseContract, ContractId } from "../core/contracts";
+import type { BeamProfileType } from "./beam-type";
 
 // ── Contract ──────────────────────────────────────────────────────
 
@@ -7,7 +8,8 @@ export interface ColumnTypeContract extends BaseContract {
   kind: "columnType";
   name: string;
   height: number;       // type-only
-  width: number;        // type-only (square cross-section side length)
+  width: number;        // type-only (cross-section dimension)
+  profileType?: BeamProfileType; // cross-section shape (type-only, default "rectangle")
   materials?: Record<string, ContractId>;
 }
 
@@ -16,7 +18,7 @@ export function isColumnType(c: { kind: string }): c is ColumnTypeContract {
 }
 
 export function createColumnType(
-  options?: Partial<Pick<ColumnTypeContract, "name" | "height" | "width">>
+  options?: Partial<Pick<ColumnTypeContract, "name" | "height" | "width" | "profileType">>
 ): ColumnTypeContract {
   return {
     id: crypto.randomUUID(),
@@ -24,6 +26,7 @@ export function createColumnType(
     name: options?.name ?? "Column Type",
     height: options?.height ?? 3.0,
     width: options?.width ?? 0.3,
+    profileType: options?.profileType ?? "rectangle",
   };
 }
 
@@ -40,6 +43,7 @@ export const columnTypeElement: ElementTypeDefinition = {
   typeParams: [
     { key: "height", label: "Height", category: "type-only", inputType: "number", step: 0.1, min: 0.5, max: 20, fallback: 3.0, summaryPrefix: "H", summaryUnit: "m" },
     { key: "width", label: "Width", category: "type-only", inputType: "number", step: 0.01, min: 0.05, max: 2, fallback: 0.3, summaryPrefix: "W", summaryUnit: "m" },
+    { key: "profileType", label: "Profile", category: "type-only", inputType: "select", options: ["rectangle", "h", "t", "c", "l", "circle"], fallback: "rectangle" },
   ],
 
   generateGeometry() {

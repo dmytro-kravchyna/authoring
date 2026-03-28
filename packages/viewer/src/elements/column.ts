@@ -3,9 +3,17 @@ import type { ElementTypeDefinition, ElementRelationship } from "../core/registr
 import type { BaseContract, ContractId, AnyContract } from "../core/contracts";
 import type { ColumnTypeContract } from "./column-type";
 import type { BimDocument } from "../core/document";
-import { ColumnHandles } from "../handles/column-handles";
-import { rectangleProfile, extrudeProfile } from "../generators/profiles";
+import {
+  rectangleProfile,
+  circleProfile,
+  hProfile,
+  tProfile,
+  cProfile,
+  lProfile,
+  extrudeProfile,
+} from "../generators/profiles";
 import { resolveMaterial } from "../utils/material-resolve";
+import type { BeamProfileType } from "./beam-type";
 
 // ── Contract ──────────────────────────────────────────────────────
 
@@ -40,6 +48,7 @@ export function createColumn(
 export interface ResolvedColumnParams {
   height: number;
   width: number;
+  profileType: BeamProfileType;
 }
 
 export function resolveColumnParams(
@@ -50,7 +59,28 @@ export function resolveColumnParams(
   return {
     height: type?.height ?? 3.0,
     width: type?.width ?? 0.3,
+    profileType: type?.profileType ?? "rectangle",
   };
+}
+
+/** Select profile points by type. For columns, width is used for both dimensions (square/round). */
+function getColumnProfile(profileType: BeamProfileType, width: number): number[] {
+  switch (profileType) {
+    case "rectangle":
+      return rectangleProfile(width, width);
+    case "circle":
+      return circleProfile(width / 2);
+    case "h":
+      return hProfile(width, width, width * 0.15, width * 0.1);
+    case "t":
+      return tProfile(width, width, width * 0.15, width * 0.1);
+    case "c":
+      return cProfile(width, width, width * 0.15, width * 0.1);
+    case "l":
+      return lProfile(width, width, width * 0.15);
+    default:
+      return rectangleProfile(width, width);
+  }
 }
 
 // ── Element definition ────────────────────────────────────────────
@@ -63,9 +93,9 @@ export const columnElement: ElementTypeDefinition = {
 
   generateGeometry(engine, contract, doc) {
     const col = contract as ColumnContract;
-    const { height, width } = resolveColumnParams(col, doc);
+    const { height, width, profileType } = resolveColumnParams(col, doc);
     return extrudeProfile(engine, {
-      profile: rectangleProfile(width, width),
+      profile: getColumnProfile(profileType, width),
       position: col.base,
       direction: [0, 1, 0],
       length: height,
@@ -74,11 +104,11 @@ export const columnElement: ElementTypeDefinition = {
 
   generateLocalGeometry(engine, contract, doc) {
     const col = contract as ColumnContract;
-    const { height, width } = resolveColumnParams(col, doc);
+    const { height, width, profileType } = resolveColumnParams(col, doc);
     const type = doc.contracts.get(col.typeId) as ColumnTypeContract | undefined;
     const bodyMatId = type?.materials?.body;
     const geometry = extrudeProfile(engine, {
-      profile: rectangleProfile(width, width),
+      profile: getColumnProfile(profileType, width),
       position: [0, 0, 0],
       direction: [0, 1, 0],
       length: height,
@@ -88,7 +118,7 @@ export const columnElement: ElementTypeDefinition = {
       worldTransform,
       parts: [{
         geometry,
-        geoHash: `col:${height}:${width}|${bodyMatId ?? ""}`,
+        geoHash: `col:${profileType}:${height}:${width}|${bodyMatId ?? ""}`,
         material: resolveMaterial(bodyMatId, doc, DEFAULT_MAT),
       }],
     };
@@ -96,9 +126,9 @@ export const columnElement: ElementTypeDefinition = {
 
   getVoidGeometry(engine, contract, doc) {
     const col = contract as ColumnContract;
-    const { height, width } = resolveColumnParams(col, doc);
+    const { height, width, profileType } = resolveColumnParams(col, doc);
     const geo = extrudeProfile(engine, {
-      profile: rectangleProfile(width, width),
+      profile: getColumnProfile(profileType, width),
       position: col.base,
       direction: [0, 1, 0],
       length: height,
@@ -152,8 +182,16 @@ export const columnElement: ElementTypeDefinition = {
     ];
   },
 
-  createHandles(scene, doc, _engine, contract) {
-    return new ColumnHandles(scene, doc, contract as ColumnContract);
+  getLinearEdges(contract, doc) {
+    const col = contract as ColumnContract;
+    const { height, width } = resolveColumnParams(col, doc!);
+    return [{
+      startId: "base",
+      endId: "top",
+      start: col.base,
+      end: [col.base[0], col.base[1] + height, col.base[2]] as [number, number, number],
+      expansion: width / 2,
+    }];
   },
 
   applyTranslation(contract, delta) {
@@ -161,6 +199,16 @@ export const columnElement: ElementTypeDefinition = {
     return {
       ...col,
       base: [col.base[0] + delta[0], col.base[1] + delta[1], col.base[2] + delta[2]] as [number, number, number],
+    };
+  },
+
+  applyRotation(contract, angle, pivot) {
+    const col = contract as ColumnContract;
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const dx = col.base[0] - pivot[0], dz = col.base[2] - pivot[2];
+    return {
+      ...col,
+      base: [pivot[0] + dx * cos - dz * sin, col.base[1], pivot[2] + dx * sin + dz * cos] as [number, number, number],
     };
   },
 

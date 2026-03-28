@@ -24,6 +24,12 @@ import { FloorTool } from "./tools/floor-tool";
 import { ColumnTool } from "./tools/column-tool";
 import { DoorTool } from "./tools/door-tool";
 import { MoveTool } from "./tools/move-tool";
+import { RotateTool } from "./tools/rotate-tool";
+import { BeamTool } from "./tools/beam-tool";
+import { FurnitureTool } from "./tools/furniture-tool";
+import { RailingTool } from "./tools/railing-tool";
+import { StairTool } from "./tools/stair-tool";
+import { TerrainTool } from "./tools/terrain-tool";
 import { PasteTool } from "./tools/paste-tool";
 import { wallElement } from "./elements/wall";
 import { windowElement } from "./elements/window";
@@ -34,6 +40,16 @@ import { wallTypeElement, createWallType } from "./elements/wall-type";
 import { windowTypeElement, createWindowType } from "./elements/window-type";
 import { columnTypeElement, createColumnType } from "./elements/column-type";
 import { doorTypeElement, createDoorType } from "./elements/door-type";
+import { beamElement } from "./elements/beam";
+import { beamTypeElement, createBeamType } from "./elements/beam-type";
+import { furnitureElement } from "./elements/furniture";
+import { furnitureTypeElement, createFurnitureType } from "./elements/furniture-type";
+import { railingElement } from "./elements/railing";
+import { railingTypeElement, createRailingType } from "./elements/railing-type";
+import { stairElement } from "./elements/stair";
+import { stairTypeElement, createStairType } from "./elements/stair-type";
+import { terrainElement } from "./elements/terrain";
+import { terrainTypeElement, createTerrainType } from "./elements/terrain-type";
 import { levelElement, createLevel } from "./elements/level";
 import { materialElement } from "./elements/material";
 import { TypesTab } from "./ui/types-tab";
@@ -179,6 +195,16 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
   registry.register(columnTypeElement);
   registry.register(doorElement);
   registry.register(doorTypeElement);
+  registry.register(beamElement);
+  registry.register(beamTypeElement);
+  registry.register(furnitureElement);
+  registry.register(furnitureTypeElement);
+  registry.register(railingElement);
+  registry.register(railingTypeElement);
+  registry.register(stairElement);
+  registry.register(stairTypeElement);
+  registry.register(terrainElement);
+  registry.register(terrainTypeElement);
   registry.register(levelElement);
   registry.register(materialElement);
 
@@ -202,10 +228,24 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
   const defaultWindowType = createWindowType({ width: 1.2, height: 1.0, sillHeight: 1.0 });
   const defaultColumnType = createColumnType({ height: 3.0, width: 0.3 });
   const defaultDoorType = createDoorType({ width: 0.9, height: 2.1 });
+  const defaultBeamType = createBeamType({ height: 0.3, width: 0.2, profileType: "rectangle" });
+  const defaultDeskType = createFurnitureType({ name: "Student Desk", generator: "desk", width: 1.2, depth: 0.6, height: 0.75 });
+  const defaultChairType = createFurnitureType({ name: "Student Chair", generator: "chair", width: 0.45, depth: 0.45, height: 0.45 });
+  const defaultTableType = createFurnitureType({ name: "Table", generator: "table", width: 1.8, depth: 0.9, height: 0.75 });
+  const defaultRailingType = createRailingType({ name: "Standard Railing" });
+  const defaultStairType = createStairType({ name: "Standard Stair" });
+  const defaultTerrainType = createTerrainType({ name: "Site Terrain" });
   doc.add(defaultWallType);
   doc.add(defaultWindowType);
   doc.add(defaultColumnType);
   doc.add(defaultDoorType);
+  doc.add(defaultBeamType);
+  doc.add(defaultDeskType);
+  doc.add(defaultChairType);
+  doc.add(defaultTableType);
+  doc.add(defaultRailingType);
+  doc.add(defaultStairType);
+  doc.add(defaultTerrainType);
 
   // --- Default levels ---
   doc.add(createLevel("Level 0", 0));
@@ -218,15 +258,26 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
   const windowTool = new WindowTool(scene, doc, engine, camera, renderer.domElement, fragMgr, toolMgr);
   windowTool.typeId = defaultWindowType.id;
   const floorTool = new FloorTool(scene, doc, engine, toolMgr, sync);
-  const columnTool = new ColumnTool(doc, scene, toolMgr);
+  const columnTool = new ColumnTool(doc, scene, engine, toolMgr);
   columnTool.typeId = defaultColumnType.id;
   const doorTool = new DoorTool(scene, doc, engine, camera, renderer.domElement, fragMgr, toolMgr);
   doorTool.typeId = defaultDoorType.id;
+  const beamTool = new BeamTool(scene, doc, engine, toolMgr);
+  beamTool.typeId = defaultBeamType.id;
+  const furnitureTool = new FurnitureTool(doc, scene, toolMgr);
+  furnitureTool.typeId = defaultDeskType.id;
+  const railingTool = new RailingTool(scene, doc, toolMgr);
+  railingTool.typeId = defaultRailingType.id;
+  const stairTool = new StairTool(scene, doc, toolMgr);
+  stairTool.typeId = defaultStairType.id;
+  const terrainTool = new TerrainTool(scene, doc, toolMgr);
+  terrainTool.typeId = defaultTerrainType.id;
   const selectTool = new SelectTool(scene, camera, renderer.domElement, doc, fragMgr, toolMgr, controls, engine, sync, registry);
   const moveTool = new MoveTool(scene, doc, toolMgr, sync, registry, selectTool, controls);
+  const rotateTool = new RotateTool(scene, doc, toolMgr, sync, registry, selectTool, controls);
 
   // Hide temp dimensions during drags
-  moveTool.onDragStateChanged = (dragging) => {
+  const onTransformDrag = (dragging: boolean) => {
     if (dragging) {
       tempDims.onSelectionChanged([]);
     } else {
@@ -234,20 +285,15 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
       if (sel.length > 0) tempDims.onSelectionChanged(sel);
     }
   };
-  selectTool.onDragStateChanged = (dragging) => {
-    if (dragging) {
-      tempDims.onSelectionChanged([]);
-    } else {
-      const sel = selectTool.getSelectedContractsAll();
-      if (sel.length > 0) tempDims.onSelectionChanged(sel);
-    }
-  };
+  moveTool.onDragStateChanged = onTransformDrag;
+  rotateTool.onDragStateChanged = onTransformDrag;
+  selectTool.onDragStateChanged = onTransformDrag;
 
   // Clipboard & Paste
   const clipboard = new ModelClipboard();
   const pasteTool = new PasteTool(scene, doc, toolMgr, sync, registry, selectTool, clipboard);
 
-  const allTools: Tool[] = [wallTool, windowTool, doorTool, floorTool, columnTool, selectTool, moveTool, pasteTool];
+  const allTools: Tool[] = [wallTool, windowTool, doorTool, floorTool, columnTool, beamTool, furnitureTool, railingTool, stairTool, terrainTool, selectTool, moveTool, rotateTool, pasteTool];
 
   // --- Tool descriptors ---
   const onToolsChanged = new TypedEvent<void>();
@@ -257,8 +303,14 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
     { tool: doorTool, label: "Door", category: "create" },
     { tool: floorTool, label: "Floor", category: "create" },
     { tool: columnTool, label: "Column", category: "create" },
+    { tool: beamTool, label: "Beam", category: "create" },
+    { tool: furnitureTool, label: "Furniture", category: "create" },
+    { tool: railingTool, label: "Railing", category: "create" },
+    { tool: stairTool, label: "Stair", category: "create" },
+    { tool: terrainTool, label: "Terrain", category: "create" },
     { tool: selectTool, label: "Select", category: "edit" },
     { tool: moveTool, label: "Move", category: "edit" },
+    { tool: rotateTool, label: "Rotate", category: "edit" },
   ];
 
   // --- UI Panels ---
@@ -502,7 +554,7 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
   };
 
   // Expose for debugging
-  (window as any).__bim = instance;
+  (window as any).__revit = instance;
 
   return instance;
 }
@@ -530,8 +582,16 @@ export type { ContributionIntent, InterceptionResult } from "./ai/prompt-interce
 export type { ToolDescriptorMeta, CommandDescriptorMeta } from "./ai/session-tracker";
 export type { SelectionAPI } from "./ai/executor";
 
+// Snap settings (for shell snap panel integration)
+export { snapSettings } from "./utils/snap";
+
 // Factory functions for creating default type contracts
 export { createColumnType } from "./elements/column-type";
 export { createWallType } from "./elements/wall-type";
 export { createWindowType } from "./elements/window-type";
 export { createDoorType } from "./elements/door-type";
+export { createBeamType } from "./elements/beam-type";
+export { createFurnitureType } from "./elements/furniture-type";
+export { createRailingType } from "./elements/railing-type";
+export { createStairType } from "./elements/stair-type";
+export { createTerrainType } from "./elements/terrain-type";

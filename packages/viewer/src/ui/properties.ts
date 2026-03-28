@@ -90,7 +90,7 @@ export class PropertiesPanel {
     for (const param of typeDef?.typeParams ?? []) {
       if (param.category === "type-only") {
         const value = (typeContract as any)?.[param.key] ?? param.fallback;
-        this.addReadOnlyField(this.container, param.label, value as number, "from type");
+        this.addReadOnlyField(this.container, param.label, value, "from type");
       } else if (param.category === "defaultable") {
         const hasOverride = (contract as any)[param.key] != null;
         const effective = (contract as any)[param.key] ?? (typeContract as any)?.[param.key] ?? param.fallback;
@@ -144,12 +144,12 @@ export class PropertiesPanel {
     container.appendChild(label);
   }
 
-  private addReadOnlyField(container: HTMLElement, labelText: string, value: number, hint?: string) {
+  private addReadOnlyField(container: HTMLElement, labelText: string, value: number | string, hint?: string) {
     const label = document.createElement("label");
     label.textContent = labelText;
     const input = document.createElement("input");
-    input.type = "number";
-    input.value = value.toFixed(2);
+    input.type = typeof value === "number" ? "number" : "text";
+    input.value = typeof value === "number" ? value.toFixed(2) : String(value);
     input.disabled = true;
     input.style.opacity = "0.6";
     label.appendChild(input);

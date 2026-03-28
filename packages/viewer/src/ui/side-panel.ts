@@ -32,6 +32,24 @@ export class SidePanel {
     if (this.tabs.size === 1) this.switchTab(id);
   }
 
+  /** Remove a tab. If it's the active tab, switch to the first remaining tab. */
+  removeTab(id: string) {
+    const tab = this.tabs.get(id);
+    if (!tab) return;
+    this.tabBar.removeChild(tab.button);
+    this.tabs.delete(id);
+    if (this.activeTab === id) {
+      const first = this.tabs.keys().next().value;
+      if (first) {
+        this.activeTab = ""; // clear so switchTab doesn't early-return
+        this.switchTab(first);
+      } else {
+        this.activeTab = "";
+        this.contentArea.innerHTML = "";
+      }
+    }
+  }
+
   switchTab(id: string) {
     if (this.activeTab === id) return;
     this.activeTab = id;

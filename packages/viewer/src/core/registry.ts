@@ -223,11 +223,13 @@ export interface TypeParamDescriptor {
    *  "instance-only": only on instance, not shown on type. */
   category: "type-only" | "defaultable" | "instance-only";
   /** Input type for rendering. */
-  inputType: "number" | "text";
+  inputType: "number" | "text" | "select";
   /** For number inputs. */
   step?: number;
   min?: number;
   max?: number;
+  /** For select inputs — list of allowed values. */
+  options?: string[];
   /** Fallback value when type contract is missing. */
   fallback: number | string;
   /** Short prefix for summary display (e.g. "H" for height). */
@@ -425,6 +427,17 @@ export interface ElementTypeDefinition {
   applyTranslation?(
     contract: AnyContract,
     delta: [number, number, number]
+  ): AnyContract | null;
+
+  /**
+   * Apply a Y-axis rotation around a pivot point to this element's contract (optional).
+   * Returns the updated contract, or null if the element should not be
+   * directly rotated (e.g. hosted elements that rotate with their host).
+   */
+  applyRotation?(
+    contract: AnyContract,
+    angle: number,
+    pivot: [number, number, number]
   ): AnyContract | null;
 
   /**

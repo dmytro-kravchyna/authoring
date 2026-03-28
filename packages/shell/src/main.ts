@@ -41,14 +41,18 @@ async function bootstrap() {
   viewerContainer.className = "viewer-container";
   editorArea.appendChild(viewerContainer);
 
-  // ── Right Sidebar ──
+  // ── Right Sidebar (tabbed) ──
   const rightSidebar = document.createElement("div");
   rightSidebar.className = "right-sidebar collapsed";
 
   const rightHeader = document.createElement("div");
-  rightHeader.className = "sidebar-header";
+  rightHeader.className = "right-sidebar-header";
   rightHeader.textContent = "PROPERTIES";
   rightSidebar.appendChild(rightHeader);
+
+  const rightTabBar = document.createElement("div");
+  rightTabBar.className = "right-tab-bar";
+  rightSidebar.appendChild(rightTabBar);
 
   const rightContent = document.createElement("div");
   rightContent.className = "sidebar-content";
@@ -82,35 +86,121 @@ async function bootstrap() {
   const toolbar = new FloatingToolbar(viewer, extensionHost);
   editorArea.appendChild(toolbar.element);
 
-  // Wire tool name to status bar and toolbar highlight (after toolbar creation)
+  // ── Right sidebar tab management ──
+  type RightTab = { id: string; label: string; render: () => void; button: HTMLButtonElement };
+  const rightTabs: RightTab[] = [];
+  let activeRightTab = "";
+
+  function addRightTab(id: string, label: string, render: () => void) {
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    btn.addEventListener("click", () => switchRightTab(id));
+    rightTabBar.appendChild(btn);
+    rightTabs.push({ id, label, render, button: btn });
+    updateTabBarVisibility();
+  }
+
+  function removeRightTab(id: string) {
+    const idx = rightTabs.findIndex(t => t.id === id);
+    if (idx === -1) return;
+    const tab = rightTabs[idx];
+    rightTabBar.removeChild(tab.button);
+    rightTabs.splice(idx, 1);
+    if (activeRightTab === id) {
+      activeRightTab = "";
+      if (rightTabs.length > 0) {
+        switchRightTab(rightTabs[0].id);
+      } else {
+        rightContent.innerHTML = "";
+      }
+    }
+    updateTabBarVisibility();
+  }
+
+  function switchRightTab(id: string) {
+    activeRightTab = id;
+    for (const tab of rightTabs) {
+      tab.button.classList.toggle("active", tab.id === id);
+    }
+    rightContent.innerHTML = "";
+    const tab = rightTabs.find(t => t.id === id);
+    tab?.render();
+  }
+
+  function collapseRightSidebar() {
+    rightSidebar.classList.add("collapsed");
+    activeRightTab = "";
+    rightContent.innerHTML = "";
+  }
+
+  function expandRightSidebar() {
+    rightSidebar.classList.remove("collapsed");
+  }
+
+  function updateTabBarVisibility() {
+    const multi = rightTabs.length > 1;
+    rightTabBar.classList.toggle("single-tab", !multi);
+    rightHeader.style.display = multi ? "none" : "";
+  }
+
+  // Register permanent tab (properties only — Levels/Types/Materials live in the Explorer)
+  addRightTab("properties", "Properties", () => {
+    const selected = viewer.selectTool.getSelectedContract();
+    if (selected) {
+      viewer.propsPanel.show(selected, rightContent);
+    } else {
+      viewer.propsPanel.showEmpty(rightContent);
+    }
+  });
+
+  // Wire tool name to status bar, toolbar highlight, and creation options
   viewer.toolMgr.onToolChanged = (name: string | null) => {
     statusBar.updateItem("tool", name ? `Tool: ${name}` : "");
     toolbar.highlightTool(name);
-    // Hide properties panel when leaving select mode
-    if (name !== "select") {
-      rightSidebar.classList.add("collapsed");
-    } else {
-      // Re-show properties if there's an active selection
+
+    // Remove previous creation tab
+    removeRightTab("create");
+
+    // Add creation tab if active tool has renderCreationOptions
+    const activeTool = viewer.toolMgr.getActiveTool();
+    if (activeTool?.renderCreationOptions) {
+      const tool = activeTool;
+      addRightTab("create", "Create", () => {
+        const header = document.createElement("h3");
+        header.textContent = `${tool.name.charAt(0).toUpperCase() + tool.name.slice(1)} Options`;
+        rightContent.appendChild(header);
+        tool.renderCreationOptions!(rightContent);
+      });
+      expandRightSidebar();
+      switchRightTab("create");
+    } else if (name === "select") {
+      // Switching to select tool — show properties if something is selected
       const selected = viewer.selectTool.getSelectedContract();
       if (selected) {
-        rightSidebar.classList.remove("collapsed");
-        rightContent.innerHTML = "";
-        viewer.propsPanel.show(selected, rightContent);
+        expandRightSidebar();
+        switchRightTab("properties");
+      } else {
+        collapseRightSidebar();
       }
+    } else {
+      // Non-create tool, no selection — collapse
+      collapseRightSidebar();
     }
   };
 
   // ── Wire selection → right sidebar properties ──
   viewer.onSelectionChanged = (contract) => {
-    // Only show properties when the select tool is active
-    const isSelectMode = viewer.toolMgr.getActiveTool()?.name === "select";
-    if (!isSelectMode) return;
     if (contract) {
-      rightSidebar.classList.remove("collapsed");
-      rightContent.innerHTML = "";
-      viewer.propsPanel.show(contract, rightContent);
+      expandRightSidebar();
+      switchRightTab("properties");
     } else {
-      rightSidebar.classList.add("collapsed");
+      // Selection cleared
+      const hasCreateTab = rightTabs.some(t => t.id === "create");
+      if (hasCreateTab) {
+        switchRightTab("create");
+      } else {
+        collapseRightSidebar();
+      }
     }
   };
 
@@ -119,10 +209,13 @@ async function bootstrap() {
     if (viewer.sync.isDragging) return;
     if (
       viewer.selectTool.getSelectedContract()?.id === contract.id &&
-      !rightSidebar.classList.contains("collapsed")
+      activeRightTab === "properties"
     ) {
       rightContent.innerHTML = "";
       viewer.propsPanel.show(contract, rightContent);
+    }
+    if (viewer.registry.isDataOnly(contract.kind)) {
+      viewer.typesTab.refresh();
     }
   });
 

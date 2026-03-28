@@ -187,13 +187,13 @@ function createMockManager() {
   const mockDeltaModel = mockDelta;
 
   const modelsList = new Map<string, any>();
-  modelsList.set("bim-authoring", mockBaseModel);
+  modelsList.set("revit-authoring", mockBaseModel);
   modelsList.set("delta-1", mockDeltaModel);
 
   let requestCount = 0;
 
   const mgr = {
-    modelId: "bim-authoring",
+    modelId: "revit-authoring",
     editor: {
       edit: vi.fn(async () => { requestCount++; }),
       getModelRequests: vi.fn(async () => ({
@@ -367,7 +367,7 @@ describe("FragmentSync", () => {
     const p = sync.flush();
     // Trigger the onViewUpdated event to signal tiles are ready,
     // then advance past the safety fallback timeout
-    const baseModel = mgr.fragments.models.list.get("bim-authoring") as any;
+    const baseModel = mgr.fragments.models.list.get("revit-authoring") as any;
     baseModel.onViewUpdated.trigger();
     await vi.advanceTimersByTimeAsync(300);
     await p;
@@ -1194,7 +1194,7 @@ describe("FragmentSync", () => {
       const localId1 = ids1.itemId;
       const localId2 = ids2.itemId;
 
-      const baseModel = mgr.fragments.models.list.get("bim-authoring");
+      const baseModel = mgr.fragments.models.list.get("revit-authoring");
 
       // Navigate to -1 with only w1 as affected. The -1 path waits for
       // onViewUpdated (with 200ms fallback). Trigger the event + advance timers.

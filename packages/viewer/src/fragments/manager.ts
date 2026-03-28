@@ -3,7 +3,7 @@ import * as FRAGS from "@thatopen/fragments";
 
 export class FragmentManager {
   fragments: FRAGS.FragmentsModels;
-  modelId = "bim-authoring";
+  modelId = "revit-authoring";
   model: any = null;
 
   private constructor(fragments: FRAGS.FragmentsModels) {

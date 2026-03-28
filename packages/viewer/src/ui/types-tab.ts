@@ -136,6 +136,12 @@ export class TypesTab {
             ensureCleared();
             this.doc.update(type.id, { [param.key]: v });
           });
+      } else if (param.inputType === "select" && param.options) {
+        this.addSelectField(container, param.label, (type as any)[param.key] ?? param.fallback,
+          param.options, (v) => {
+            ensureCleared();
+            this.doc.update(type.id, { [param.key]: v });
+          });
       }
     }
 
@@ -200,6 +206,24 @@ export class TypesTab {
     });
     input.addEventListener("click", (e) => e.stopPropagation());
     row.appendChild(input);
+    container.appendChild(row);
+  }
+
+  private addSelectField(container: HTMLElement, label: string, value: string, options: string[], onChange: (v: string) => void) {
+    const row = document.createElement("label");
+    row.textContent = label;
+    const select = document.createElement("select");
+    select.style.cssText = "width: 120px;";
+    for (const opt of options) {
+      const option = document.createElement("option");
+      option.value = opt;
+      option.textContent = opt;
+      if (opt === value) option.selected = true;
+      select.appendChild(option);
+    }
+    select.addEventListener("change", () => onChange(select.value));
+    select.addEventListener("click", (e) => e.stopPropagation());
+    row.appendChild(select);
     container.appendChild(row);
   }
 
