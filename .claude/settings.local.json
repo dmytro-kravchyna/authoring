@@ -91,7 +91,8 @@
       "Bash(echo \"$ANTHROPIC_API_KEY:-not_set\")",
       "Bash(./scripts/dev.sh)",
       "Bash(lsof -ti:3000)",
-      "Bash(lsof -ti:4000)"
+      "Bash(lsof -ti:4000)",
+      "Bash(find /Users/dmk/Projects/private/authoring/packages/store-server -name *.ts -o -name *.js)"
     ]
   }
 }

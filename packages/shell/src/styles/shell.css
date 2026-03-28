@@ -17,7 +17,7 @@ body {
 
 #shell {
   display: grid;
-  grid-template-columns: 48px auto 1fr auto;
+  grid-template-columns: 48px auto 4px 1fr auto;
   grid-template-rows: 1fr auto;
   width: 100vw;
   height: 100vh;
@@ -94,6 +94,27 @@ body {
   overflow: hidden;
 }
 
+.sidebar-resize-handle {
+  grid-column: 3;
+  grid-row: 1;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  z-index: 20;
+  margin-left: -2px;
+  transition: background 0.15s;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle.active {
+  background: var(--vscode-sash-hoverBorder, #007fd4);
+}
+
+.sidebar.collapsed + .sidebar-resize-handle {
+  visibility: hidden;
+}
+
 .sidebar-header {
   height: 35px;
   display: flex;
@@ -153,7 +174,7 @@ body {
 /* ── Editor Area (main content) ────────────────────────── */
 
 .editor-area {
-  grid-column: 3;
+  grid-column: 4;
   grid-row: 1;
   position: relative;
   overflow: hidden;
@@ -211,7 +232,7 @@ body {
 /* ── Right Sidebar ─────────────────────────────────────── */
 
 .right-sidebar {
-  grid-column: 4;
+  grid-column: 5;
   grid-row: 1;
   width: 280px;
   background: var(--vscode-sideBar-background);

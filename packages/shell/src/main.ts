@@ -63,6 +63,7 @@ async function bootstrap() {
   // ── Assemble shell ──
   shell.appendChild(activityBar.element);
   shell.appendChild(sidebar.element);
+  shell.appendChild(sidebar.resizeHandle);
   shell.appendChild(editorArea);
   shell.appendChild(rightSidebar);
   shell.appendChild(statusBar.element);
