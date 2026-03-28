@@ -107,6 +107,11 @@ export function createExtensionsView(container: HTMLElement, extensionHost?: Ext
     if (activeTab === "marketplace") renderList();
   });
 
+  // Close dropdown menus when clicking outside
+  document.addEventListener("click", () => {
+    container.querySelectorAll(".ext-dropdown.open").forEach((d) => d.classList.remove("open"));
+  });
+
   renderList();
 }
 
@@ -155,50 +160,70 @@ function createInstalledCard(ext: InstalledExtensionInfo, extensionHost?: Extens
   card.appendChild(createCardIcon());
   card.appendChild(createCardInfo(ext));
 
-  const actions = document.createElement("div");
-  actions.style.cssText = "display: flex; gap: 4px; align-self: center; flex-shrink: 0;";
+  // Dropdown menu button
+  const dropdown = document.createElement("div");
+  dropdown.className = "ext-dropdown";
 
-  // Enable/Disable toggle
-  const toggleBtn = document.createElement("button");
-  toggleBtn.className = ext.enabled ? "btn-secondary" : "btn-primary";
-  toggleBtn.textContent = ext.enabled ? "Disable" : "Enable";
-  toggleBtn.addEventListener("click", async (e) => {
+  const trigger = document.createElement("button");
+  trigger.className = "ext-dropdown-trigger";
+  trigger.innerHTML = `<i class="codicon codicon-ellipsis"></i>`;
+  trigger.addEventListener("click", (e) => {
     e.stopPropagation();
+    const wasOpen = dropdown.classList.contains("open");
+    // Close any other open dropdowns
+    document.querySelectorAll(".ext-dropdown.open").forEach((d) => d.classList.remove("open"));
+    if (!wasOpen) dropdown.classList.add("open");
+  });
+  dropdown.appendChild(trigger);
+
+  const menu = document.createElement("div");
+  menu.className = "ext-dropdown-menu";
+
+  // Enable/Disable item
+  const toggleItem = document.createElement("div");
+  toggleItem.className = "ext-dropdown-item";
+  toggleItem.innerHTML = ext.enabled
+    ? `<i class="codicon codicon-circle-slash"></i> Disable`
+    : `<i class="codicon codicon-check"></i> Enable`;
+  toggleItem.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    dropdown.classList.remove("open");
     if (ext.enabled) {
       if (extensionHost) {
         await extensionHost.disableExtension(ext.id, ext.bundleUrl);
       }
       ext.enabled = false;
-      toggleBtn.textContent = "Enable";
-      toggleBtn.className = "btn-primary";
+      toggleItem.innerHTML = `<i class="codicon codicon-check"></i> Enable`;
       card.classList.add("extension-disabled");
     } else {
       if (extensionHost) {
         await extensionHost.enableExtension(ext.id);
       }
       ext.enabled = true;
-      toggleBtn.textContent = "Disable";
-      toggleBtn.className = "btn-secondary";
+      toggleItem.innerHTML = `<i class="codicon codicon-circle-slash"></i> Disable`;
       card.classList.remove("extension-disabled");
     }
   });
-  actions.appendChild(toggleBtn);
+  menu.appendChild(toggleItem);
 
-  // Uninstall button
-  const uninstallBtn = document.createElement("button");
-  uninstallBtn.className = "btn-secondary";
-  uninstallBtn.textContent = "Uninstall";
-  uninstallBtn.addEventListener("click", async (e) => {
+  // Uninstall item
+  const uninstallItem = document.createElement("div");
+  uninstallItem.className = "ext-dropdown-item danger";
+  uninstallItem.innerHTML = `<i class="codicon codicon-trash"></i> Uninstall`;
+  uninstallItem.addEventListener("click", async (e) => {
     e.stopPropagation();
+    dropdown.classList.remove("open");
     if (ext.enabled && extensionHost) {
       await extensionHost.unloadExtension(ext.id);
     }
     installedExtensions.delete(ext.id);
     card.remove();
   });
-  actions.appendChild(uninstallBtn);
+  menu.appendChild(uninstallItem);
 
-  card.appendChild(actions);
+  dropdown.appendChild(menu);
+  card.appendChild(dropdown);
+
   return card;
 }
 
@@ -294,6 +319,13 @@ function showSampleExtensions(container: HTMLElement, extensionHost?: ExtensionH
   container.appendChild(notice);
 
   for (const ext of samples) {
-    container.appendChild(createMarketplaceCard(ext, extensionHost));
+    const card = createMarketplaceCard(ext, extensionHost);
+    // Disable install for sample extensions — no real bundle exists
+    const btn = card.querySelector("button");
+    if (btn) {
+      btn.disabled = true;
+      btn.title = "Store offline — cannot install";
+    }
+    container.appendChild(card);
   }
 }

@@ -360,6 +360,81 @@ body {
   opacity: 0.55;
 }
 
+/* ── Extension dropdown menu ──────────────────────────── */
+
+.ext-dropdown {
+  position: relative;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.ext-dropdown-trigger {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s;
+}
+
+.extension-card:hover .ext-dropdown-trigger,
+.ext-dropdown.open .ext-dropdown-trigger {
+  opacity: 1;
+}
+
+.ext-dropdown-trigger:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.ext-dropdown-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 2px;
+  min-width: 140px;
+  background: var(--vscode-menu-background, var(--vscode-dropdown-background));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-dropdown-border));
+  border-radius: 4px;
+  padding: 4px 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.ext-dropdown.open .ext-dropdown-menu {
+  display: block;
+}
+
+.ext-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ext-dropdown-item:hover {
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-foreground));
+}
+
+.ext-dropdown-item.danger:hover {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+}
+
+.ext-dropdown-item i {
+  font-size: 14px;
+}
+
 /* ── Search input ──────────────────────────────────────── */
 
 .search-input {
