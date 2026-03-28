@@ -1,0 +1,13 @@
+{
+  "name": "@bim-ide/extension-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@bim-ide/viewer": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
