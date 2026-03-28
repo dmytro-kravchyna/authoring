@@ -72,6 +72,13 @@ function createMockSync(): UndoSyncApi & { _fragIndex: number } {
   return mock;
 }
 
+function setHasExtracted(sync: UndoSyncApi, value: boolean) {
+  Object.defineProperty(sync, "hasExtracted", {
+    configurable: true,
+    get: () => value,
+  });
+}
+
 // ── Tests ─────────────────────────────────────────────────────────
 
 describe("UndoManager", () => {
@@ -307,7 +314,7 @@ describe("UndoManager", () => {
 
   describe("selection session", () => {
     it("accumulates mutations while extracted", async () => {
-      sync.hasExtracted = true;
+      setHasExtracted(sync, true);
 
       mgr.recordTransaction(makeRecord(["w1"]));
       mgr.recordTransaction(makeRecord(["w2"]));
@@ -315,7 +322,7 @@ describe("UndoManager", () => {
       // Not yet on undo stack (still in selection session)
       expect(mgr.canUndo).toBe(true); // selectionRecord exists
 
-      sync.hasExtracted = false;
+      setHasExtracted(sync, false);
       mgr.finalizeSelectionRecord();
       await drain();
 
@@ -323,12 +330,12 @@ describe("UndoManager", () => {
     });
 
     it("deduplicates by contract ID (keeps first before)", async () => {
-      sync.hasExtracted = true;
+      setHasExtracted(sync, true);
 
       mgr.recordTransaction(makeRecord(["w1"]));
       mgr.recordTransaction(makeRecord(["w1"])); // duplicate
 
-      sync.hasExtracted = false;
+      setHasExtracted(sync, false);
       mgr.finalizeSelectionRecord();
       await drain();
 
