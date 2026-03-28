@@ -421,7 +421,7 @@ The following local variables are automatically available inside your default fu
 
 Default types are auto-created if they don't exist yet, so these variables are always valid.
 
-## Existing Element Factories
+## Element Reference
 
 To create elements, build contract objects directly. Each contract needs a unique \`id\` (use \`crypto.randomUUID()\`).
 
@@ -431,18 +431,44 @@ viewer.doc.add({
   id: crypto.randomUUID(),
   kind: "column",
   typeId: columnTypeId,  // pre-injected variable
-  base: [x, y, z],   // position [x, ground_elevation, z]
+  base: [x, y, z],      // position [x, ground_elevation, z]
 });
 \`\`\`
 
 ### Wall
 \`\`\`javascript
+const wallId = crypto.randomUUID();
 viewer.doc.add({
-  id: crypto.randomUUID(),
+  id: wallId,
   kind: "wall",
-  typeId: wallTypeId,  // pre-injected variable
+  typeId: wallTypeId,       // pre-injected variable
   start: [x1, y1, z1],
   end: [x2, y2, z2],
+  offset: 0,               // optional, lateral offset
+  startJoin: "miter",       // optional: "miter" | "square"
+  endJoin: "miter",         // optional: "miter" | "square"
+});
+\`\`\`
+
+### Window (hosted on a wall)
+\`\`\`javascript
+viewer.doc.add({
+  id: crypto.randomUUID(),
+  kind: "window",
+  typeId: windowTypeId,     // pre-injected variable
+  hostId: wallId,           // ID of the wall this window is placed on
+  position: 0.5,            // 0-1 along the wall length
+});
+\`\`\`
+
+### Door (hosted on a wall)
+\`\`\`javascript
+viewer.doc.add({
+  id: crypto.randomUUID(),
+  kind: "door",
+  typeId: doorTypeId,       // pre-injected variable
+  hostId: wallId,           // ID of the wall this door is placed on
+  position: 0.5,            // 0-1 along the wall length
 });
 \`\`\`
 
@@ -452,38 +478,133 @@ viewer.doc.add({
   id: crypto.randomUUID(),
   kind: "floor",
   boundary: [
-    { x: 0, z: 0 },
-    { x: 5, z: 0 },
-    { x: 5, z: 5 },
-    { x: 0, z: 5 },
+    { type: "free", position: [0, 0, 0] },
+    { type: "free", position: [5, 0, 0] },
+    { type: "free", position: [5, 0, 5] },
+    { type: "free", position: [0, 0, 5] },
   ],
   thickness: 0.2,
   elevation: 0,
 });
 \`\`\`
 
-### Column Type (custom dimensions)
+### Level
 \`\`\`javascript
-const typeId = crypto.randomUUID();
 viewer.doc.add({
-  id: typeId,
-  kind: "columnType",
-  name: "Large Column",
-  height: 4.0,
-  width: 0.5,
+  id: crypto.randomUUID(),
+  kind: "level",
+  name: "Level 1",
+  elevation: 3.0,          // Y coordinate in meters
 });
 \`\`\`
 
-### Wall Type (custom dimensions)
+### Material
 \`\`\`javascript
-const typeId = crypto.randomUUID();
+const matId = crypto.randomUUID();
 viewer.doc.add({
-  id: typeId,
+  id: matId,
+  kind: "material",
+  name: "Red Brick",
+  color: [0.8, 0.2, 0.1],  // RGB 0-1 range
+  opacity: 1,
+  doubleSided: true,
+  stroke: 0,
+});
+\`\`\`
+
+## Custom Type Definitions
+
+Create custom types to control dimensions. Assign materials via the \`materials\` field.
+
+### Column Type
+\`\`\`javascript
+const myColTypeId = crypto.randomUUID();
+viewer.doc.add({
+  id: myColTypeId,
+  kind: "columnType",
+  name: "Large Column",
+  height: 4.0,       // meters
+  width: 0.5,        // square cross-section side
+  materials: { body: matId },  // optional
+});
+\`\`\`
+
+### Wall Type
+\`\`\`javascript
+const myWallTypeId = crypto.randomUUID();
+viewer.doc.add({
+  id: myWallTypeId,
   kind: "wallType",
   name: "Thick Wall",
   height: 3.5,
   thickness: 0.3,
+  materials: { body: matId },  // optional
 });
+\`\`\`
+
+### Window Type
+\`\`\`javascript
+const myWinTypeId = crypto.randomUUID();
+viewer.doc.add({
+  id: myWinTypeId,
+  kind: "windowType",
+  name: "Large Window",
+  width: 1.5,
+  height: 1.2,
+  sillHeight: 0.9,   // height from floor to bottom of window
+  materials: { frame: matId },  // optional
+});
+\`\`\`
+
+### Door Type
+\`\`\`javascript
+const myDoorTypeId = crypto.randomUUID();
+viewer.doc.add({
+  id: myDoorTypeId,
+  kind: "doorType",
+  name: "Wide Door",
+  width: 1.2,
+  height: 2.4,
+  materials: { frame: matId },  // optional
+});
+\`\`\`
+
+## Composite Example — Room with walls, door, window, and floor
+\`\`\`javascript
+export default function(viewer) {
+  viewer.doc.transaction(() => {
+    const w1 = crypto.randomUUID();
+    const w2 = crypto.randomUUID();
+    const w3 = crypto.randomUUID();
+    const w4 = crypto.randomUUID();
+
+    // Four walls forming a room
+    viewer.doc.add({ id: w1, kind: "wall", typeId: wallTypeId, start: [0,0,0], end: [5,0,0] });
+    viewer.doc.add({ id: w2, kind: "wall", typeId: wallTypeId, start: [5,0,0], end: [5,0,5] });
+    viewer.doc.add({ id: w3, kind: "wall", typeId: wallTypeId, start: [5,0,5], end: [0,0,5] });
+    viewer.doc.add({ id: w4, kind: "wall", typeId: wallTypeId, start: [0,0,5], end: [0,0,0] });
+
+    // Door on wall 1
+    viewer.doc.add({ id: crypto.randomUUID(), kind: "door", typeId: doorTypeId, hostId: w1, position: 0.3 });
+
+    // Window on wall 2
+    viewer.doc.add({ id: crypto.randomUUID(), kind: "window", typeId: windowTypeId, hostId: w2, position: 0.5 });
+
+    // Floor
+    viewer.doc.add({
+      id: crypto.randomUUID(),
+      kind: "floor",
+      boundary: [
+        { type: "free", position: [0,0,0] },
+        { type: "free", position: [5,0,0] },
+        { type: "free", position: [5,0,5] },
+        { type: "free", position: [0,0,5] },
+      ],
+      thickness: 0.2,
+      elevation: 0,
+    });
+  });
+}
 \`\`\`
 
 ## Important Rules
