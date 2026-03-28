@@ -142,8 +142,20 @@ export class ExtensionHost {
           viewer.registerElement(wrapped);
         },
         registerTool(tool, descriptor) {
-          viewer.registerTool(tool, descriptor.label, descriptor.category as "create" | "edit" | undefined);
-          registeredTools.push(tool);
+          // Pad missing lifecycle methods with no-ops so ToolManager
+          // doesn't crash on extension tools that omit optional handlers.
+          const noop = () => {};
+          const safeTool = {
+            ...tool,
+            activate: tool.activate?.bind(tool) ?? noop,
+            deactivate: tool.deactivate?.bind(tool) ?? noop,
+            onPointerDown: tool.onPointerDown?.bind(tool) ?? noop,
+            onPointerMove: tool.onPointerMove?.bind(tool) ?? noop,
+            onPointerUp: tool.onPointerUp?.bind(tool) ?? noop,
+            onKeyDown: tool.onKeyDown?.bind(tool) ?? noop,
+          };
+          viewer.registerTool(safeTool, descriptor.label, descriptor.category as "create" | "edit" | undefined);
+          registeredTools.push(safeTool);
         },
         registerCommand(cmd) {
           const fullId = `${manifest.id}.${cmd.id}`;

@@ -112,6 +112,7 @@ describe("Multi-client bundle sharing", () => {
     // ── CLIENT B: Download the bundle ────────────────────────────────
     const downloadRes = await fetch(`${baseUrl}/api/extensions/test.shared-columns/download`);
     expect(downloadRes.ok).toBe(true);
+    expect(downloadRes.headers.get("content-type")).toContain("application/javascript");
 
     const downloadedCode = await downloadRes.text();
     expect(downloadedCode).toBe(bundleCode);
@@ -124,6 +125,7 @@ describe("Multi-client bundle sharing", () => {
     // ── CLIENT B (second instance): Also downloads same bundle ───────
     const download2Res = await fetch(`${baseUrl}/api/extensions/test.shared-columns/download`);
     expect(download2Res.ok).toBe(true);
+    expect(download2Res.headers.get("content-type")).toContain("application/javascript");
 
     const downloaded2 = await download2Res.text();
     expect(downloaded2).toBe(bundleCode);

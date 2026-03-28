@@ -78,6 +78,36 @@ describe("ElementRegistry — relationship behaviors (S.5)", () => {
     });
   });
 
+  // ── Unknown element types (extension safety) ─────────────────────
+
+  describe("unknown element types", () => {
+    it("isDataOnly returns true for unregistered kinds", () => {
+      const registry = new ElementRegistry();
+      expect(registry.isDataOnly("nonExistentType")).toBe(true);
+    });
+
+    it("isDataOnly returns false for registered non-dataOnly kinds", () => {
+      const registry = new ElementRegistry();
+      registry.register({
+        kind: "wall",
+        generateGeometry: () => { throw new Error("unused"); },
+        getRelationships: () => [],
+      });
+      expect(registry.isDataOnly("wall")).toBe(false);
+    });
+
+    it("isDataOnly returns true for registered dataOnly kinds", () => {
+      const registry = new ElementRegistry();
+      registry.register({
+        kind: "wallType",
+        dataOnly: true,
+        generateGeometry: () => { throw new Error("unused"); },
+        getRelationships: () => [],
+      });
+      expect(registry.isDataOnly("wallType")).toBe(true);
+    });
+  });
+
   // ── Cascade delete resolution ────────────────────────────────────
 
   describe("resolveCascadeDelete", () => {

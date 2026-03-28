@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getDatabase, syncContributions } from "../db/database.js";
 import multer from "multer";
-import { mkdirSync, existsSync, readFileSync } from "fs";
+import { mkdirSync, existsSync, readFileSync, renameSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createHash } from "crypto";
@@ -25,152 +25,162 @@ const router = Router();
 
 // List / search extensions
 router.get("/", (req, res) => {
-  const db = getDatabase();
-  const { q, sort = "downloads", category, author, contribution_type } = req.query;
+  try {
+    const db = getDatabase();
+    const { q, sort = "downloads", category, author, contribution_type } = req.query;
 
-  const params = [];
-  const conditions = [];
-  let extraJoin = "";
+    const params = [];
+    const conditions = [];
+    let extraJoin = "";
 
-  if (contribution_type) {
-    extraJoin = " JOIN extension_contributions ec ON e.id = ec.extension_id";
-    conditions.push("ec.type = ?");
-    params.push(contribution_type);
+    if (contribution_type) {
+      extraJoin = " JOIN extension_contributions ec ON e.id = ec.extension_id";
+      conditions.push("ec.type = ?");
+      params.push(contribution_type);
+    }
+
+    if (q) {
+      conditions.push("(e.name LIKE ? OR e.description LIKE ?)");
+      params.push(`%${q}%`, `%${q}%`);
+    }
+
+    if (category) {
+      conditions.push("(e.category = ? OR e.tags LIKE ?)");
+      params.push(category, `%"${category}"%`);
+    }
+
+    if (author) {
+      conditions.push("(a.name = ? OR a.id = ?)");
+      params.push(author, author);
+    }
+
+    let sql = `SELECT DISTINCT e.*, a.display_name AS author_name, a.avatar_url AS author_avatar
+               FROM extensions e
+               LEFT JOIN authors a ON e.author_id = a.id${extraJoin}`;
+
+    if (conditions.length > 0) {
+      sql += " WHERE " + conditions.join(" AND ");
+    }
+
+    const sortMap = {
+      downloads: "e.downloads DESC",
+      rating: "CASE WHEN e.rating_count > 0 THEN e.rating_sum / e.rating_count ELSE 0 END DESC",
+      recent: "e.updated_at DESC",
+      name: "e.name ASC",
+    };
+    sql += ` ORDER BY ${sortMap[sort] || "e.downloads DESC"}`;
+
+    const rows = db.prepare(sql).all(...params);
+
+    res.json(
+      rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        version: row.version,
+        description: row.description,
+        author: row.author_name || row.author,
+        author_id: row.author_id || null,
+        author_avatar: row.author_avatar || null,
+        downloads: row.downloads,
+        rating: row.rating_count > 0 ? row.rating_sum / row.rating_count : 0,
+        tags: JSON.parse(row.tags || "[]"),
+        category: row.category || null,
+        icon_url: row.icon_url || null,
+        undo_aware: !!row.undo_aware,
+      }))
+    );
+  } catch (err) {
+    console.error("[GET /extensions] Error:", err);
+    res.status(500).json({ error: err.message });
   }
+});
 
-  if (q) {
-    conditions.push("(e.name LIKE ? OR e.description LIKE ?)");
-    params.push(`%${q}%`, `%${q}%`);
-  }
+// Get extension details
+router.get("/:id", (req, res) => {
+  try {
+    const db = getDatabase();
 
-  if (category) {
-    conditions.push("(e.category = ? OR e.tags LIKE ?)");
-    params.push(category, `%"${category}"%`);
-  }
+    const row = db
+      .prepare(
+        `SELECT e.*, a.display_name AS author_name, a.avatar_url AS author_avatar,
+                a.email AS author_email, a.url AS author_url, a.org AS author_org,
+                a.verified AS author_verified
+         FROM extensions e
+         LEFT JOIN authors a ON e.author_id = a.id
+         WHERE e.id = ?`
+      )
+      .get(req.params.id);
 
-  if (author) {
-    conditions.push("(a.name = ? OR a.id = ?)");
-    params.push(author, author);
-  }
+    if (!row) {
+      return res.status(404).json({ error: "Extension not found" });
+    }
 
-  let sql = `SELECT DISTINCT e.*, a.display_name AS author_name, a.avatar_url AS author_avatar
-             FROM extensions e
-             LEFT JOIN authors a ON e.author_id = a.id${extraJoin}`;
+    const versions = db
+      .prepare(
+        "SELECT version, changelog, min_app_version, published_at FROM versions WHERE extension_id = ? ORDER BY published_at DESC"
+      )
+      .all(req.params.id);
 
-  if (conditions.length > 0) {
-    sql += " WHERE " + conditions.join(" AND ");
-  }
+    const contributions = db
+      .prepare(
+        "SELECT type, key, label, category, icon, location, metadata FROM extension_contributions WHERE extension_id = ?"
+      )
+      .all(req.params.id);
 
-  const sortMap = {
-    downloads: "e.downloads DESC",
-    rating: "CASE WHEN e.rating_count > 0 THEN e.rating_sum / e.rating_count ELSE 0 END DESC",
-    recent: "e.updated_at DESC",
-    name: "e.name ASC",
-  };
-  sql += ` ORDER BY ${sortMap[sort] || "e.downloads DESC"}`;
+    const dependencies = db
+      .prepare(
+        "SELECT dependency_id, version_constraint FROM extension_dependencies WHERE extension_id = ?"
+      )
+      .all(req.params.id);
 
-  const rows = db.prepare(sql).all(...params);
+    // Build author detail if linked
+    let author_detail = null;
+    if (row.author_id) {
+      author_detail = {
+        id: row.author_id,
+        display_name: row.author_name,
+        avatar_url: row.author_avatar || "",
+        email: row.author_email || "",
+        url: row.author_url || "",
+        org: row.author_org || "",
+        verified: !!row.author_verified,
+      };
+    }
 
-  res.json(
-    rows.map((row) => ({
+    res.json({
       id: row.id,
       name: row.name,
       version: row.version,
       description: row.description,
       author: row.author_name || row.author,
-      author_id: row.author_id || null,
-      author_avatar: row.author_avatar || null,
+      author_detail,
+      license: row.license,
+      manifest: JSON.parse(row.manifest),
+      readme: row.readme,
       downloads: row.downloads,
       rating: row.rating_count > 0 ? row.rating_sum / row.rating_count : 0,
+      rating_count: row.rating_count,
       tags: JSON.parse(row.tags || "[]"),
-      category: row.category || null,
-      icon_url: row.icon_url || null,
+      versions,
+      contributions: contributions.map((c) => ({
+        ...c,
+        metadata: JSON.parse(c.metadata || "{}"),
+      })),
+      dependencies,
+      entry_point: row.entry_point || "",
+      bundle_hash: row.bundle_hash || "",
+      permissions: JSON.parse(row.permissions || "[]"),
+      min_app_version: row.min_app_version || "",
+      icon_url: row.icon_url || "",
+      repository_url: row.repository_url || "",
+      category: row.category || "",
       undo_aware: !!row.undo_aware,
-    }))
-  );
-});
-
-// Get extension details
-router.get("/:id", (req, res) => {
-  const db = getDatabase();
-
-  const row = db
-    .prepare(
-      `SELECT e.*, a.display_name AS author_name, a.avatar_url AS author_avatar,
-              a.email AS author_email, a.url AS author_url, a.org AS author_org,
-              a.verified AS author_verified
-       FROM extensions e
-       LEFT JOIN authors a ON e.author_id = a.id
-       WHERE e.id = ?`
-    )
-    .get(req.params.id);
-
-  if (!row) {
-    return res.status(404).json({ error: "Extension not found" });
+      action_categories: JSON.parse(row.action_categories || "[]"),
+    });
+  } catch (err) {
+    console.error(`[GET /extensions/${req.params.id}] Error:`, err);
+    res.status(500).json({ error: err.message });
   }
-
-  const versions = db
-    .prepare(
-      "SELECT version, changelog, min_app_version, published_at FROM versions WHERE extension_id = ? ORDER BY published_at DESC"
-    )
-    .all(req.params.id);
-
-  const contributions = db
-    .prepare(
-      "SELECT type, key, label, category, icon, location, metadata FROM extension_contributions WHERE extension_id = ?"
-    )
-    .all(req.params.id);
-
-  const dependencies = db
-    .prepare(
-      "SELECT dependency_id, version_constraint FROM extension_dependencies WHERE extension_id = ?"
-    )
-    .all(req.params.id);
-
-  // Build author detail if linked
-  let author_detail = null;
-  if (row.author_id) {
-    author_detail = {
-      id: row.author_id,
-      display_name: row.author_name,
-      avatar_url: row.author_avatar || "",
-      email: row.author_email || "",
-      url: row.author_url || "",
-      org: row.author_org || "",
-      verified: !!row.author_verified,
-    };
-  }
-
-  res.json({
-    id: row.id,
-    name: row.name,
-    version: row.version,
-    description: row.description,
-    author: row.author_name || row.author,
-    author_detail,
-    license: row.license,
-    manifest: JSON.parse(row.manifest),
-    readme: row.readme,
-    downloads: row.downloads,
-    rating: row.rating_count > 0 ? row.rating_sum / row.rating_count : 0,
-    rating_count: row.rating_count,
-    tags: JSON.parse(row.tags || "[]"),
-    versions,
-    contributions: contributions.map((c) => ({
-      ...c,
-      metadata: JSON.parse(c.metadata || "{}"),
-    })),
-    dependencies,
-    entry_point: row.entry_point || "",
-    bundle_hash: row.bundle_hash || "",
-    permissions: JSON.parse(row.permissions || "[]"),
-    min_app_version: row.min_app_version || "",
-    icon_url: row.icon_url || "",
-    repository_url: row.repository_url || "",
-    category: row.category || "",
-    undo_aware: !!row.undo_aware,
-    action_categories: JSON.parse(row.action_categories || "[]"),
-  });
 });
 
 // Publish extension
@@ -230,8 +240,18 @@ router.post("/", upload.single("bundle"), (req, res) => {
       );
     }
 
-    // Store version record
-    const bundlePath = req.file ? req.file.path : "";
+    // Move bundle from multer temp to permanent location with .js extension
+    // so res.download() serves it with Content-Type: application/javascript
+    let bundlePath = "";
+    if (req.file) {
+      const permDir = join(STORE_DATA, id, version);
+      if (!existsSync(permDir)) {
+        mkdirSync(permDir, { recursive: true });
+      }
+      const permPath = join(permDir, "bundle.js");
+      renameSync(req.file.path, permPath);
+      bundlePath = permPath;
+    }
     db.prepare(
       `INSERT OR REPLACE INTO versions
          (extension_id, version, bundle_path, manifest, bundle_hash, changelog, min_app_version)
@@ -267,11 +287,13 @@ router.get("/:id/download", (req, res) => {
     .prepare("SELECT * FROM versions WHERE extension_id = ? AND version = ?")
     .get(req.params.id, ext.version);
 
-  if (!ver || !ver.bundle_path) {
+  if (!ver || !ver.bundle_path || !existsSync(ver.bundle_path)) {
     return res.status(404).json({ error: "No bundle available" });
   }
 
-  res.download(ver.bundle_path);
+  const code = readFileSync(ver.bundle_path, "utf-8");
+  res.set("Content-Type", "application/javascript");
+  res.send(code);
 });
 
 // Submit rating

@@ -498,9 +498,13 @@ export class ElementRegistry {
     return this.types.get(kind);
   }
 
-  /** Returns true if this element kind is data-only (no geometry, no fragments). */
+  /** Returns true if this element kind is data-only (no geometry, no fragments).
+   *  Unregistered kinds are also treated as data-only — if no ElementTypeDefinition
+   *  exists, there is no geometry generator, so the sync/fragment pipeline must skip them. */
   isDataOnly(kind: string): boolean {
-    return this.types.get(kind)?.dataOnly === true;
+    const def = this.types.get(kind);
+    if (!def) return true;
+    return def.dataOnly === true;
   }
 
   /** True when ALL keys in the patch are metadata (non-geometric). */
@@ -527,7 +531,10 @@ export class ElementRegistry {
     options?: { skipBooleans?: boolean }
   ): THREE.BufferGeometry {
     const def = this.types.get(contract.kind);
-    if (!def) throw new Error(`Unknown element type: ${contract.kind}`);
+    if (!def) {
+      console.warn(`[Registry] Unknown element type: ${contract.kind} — returning empty geometry`);
+      return new THREE.BufferGeometry();
+    }
 
     // 1. Base geometry (no booleans)
     let geo = def.generateGeometry(engine, contract, doc, options);
