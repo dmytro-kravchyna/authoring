@@ -4,6 +4,7 @@
  */
 
 import type { ExtensionHost } from "../services/extension-host";
+import { marked } from "marked";
 
 interface ExtensionInfo {
   id: string;
@@ -24,7 +25,7 @@ interface InstalledExtensionInfo extends ExtensionInfo {
 const installedExtensions = new Map<string, InstalledExtensionInfo>();
 
 // Store server URL (configurable)
-const STORE_URL = "http://localhost:4000/api";
+const STORE_URL = import.meta.env.VITE_STORE_URL || "/api";
 
 export function createExtensionsView(container: HTMLElement, extensionHost?: ExtensionHost) {
   container.innerHTML = "";
@@ -150,6 +151,8 @@ function createMarketplaceCard(ext: ExtensionInfo, extensionHost?: ExtensionHost
   });
   card.appendChild(btn);
 
+  attachWikiToggle(card, ext);
+
   return card;
 }
 
@@ -224,7 +227,89 @@ function createInstalledCard(ext: InstalledExtensionInfo, extensionHost?: Extens
   dropdown.appendChild(menu);
   card.appendChild(dropdown);
 
+  attachWikiToggle(card, ext);
+
   return card;
+}
+
+/**
+ * Adds a click-to-expand "Wiki / Features" detail section to an extension card.
+ * Fetches the full extension details (including readme and wiki contributions)
+ * from the store server and renders the documentation as markdown.
+ */
+function attachWikiToggle(card: HTMLElement, ext: ExtensionInfo) {
+  let detailPanel: HTMLElement | null = null;
+  let expanded = false;
+
+  card.style.cursor = "pointer";
+  card.addEventListener("click", async () => {
+    if (expanded && detailPanel) {
+      detailPanel.remove();
+      detailPanel = null;
+      expanded = false;
+      return;
+    }
+
+    // Fetch full extension details from the store
+    try {
+      const res = await fetch(`${STORE_URL}/extensions/${ext.id}`);
+      if (!res.ok) return;
+      const detail = await res.json();
+
+      detailPanel = document.createElement("div");
+      detailPanel.style.cssText =
+        "grid-column: 1 / -1; border-top: 1px solid var(--vscode-panel-border); padding: 12px; margin-top: 8px;";
+
+      // Wiki / Features section
+      const wikiContribs = (detail.contributions || []).filter(
+        (c: any) => c.type === "wiki"
+      );
+
+      if (detail.readme || wikiContribs.length > 0) {
+        const heading = document.createElement("div");
+        heading.style.cssText =
+          "font-size: 11px; text-transform: uppercase; color: var(--vscode-descriptionForeground); margin-bottom: 8px; font-weight: 600;";
+        heading.textContent = "Wiki / Features";
+        detailPanel.appendChild(heading);
+      }
+
+      // Render wiki entry titles as links (if any)
+      if (wikiContribs.length > 0) {
+        const wikiList = document.createElement("div");
+        wikiList.style.cssText = "margin-bottom: 8px;";
+        for (const w of wikiContribs) {
+          const item = document.createElement("div");
+          item.style.cssText =
+            "font-size: 12px; padding: 2px 0; color: var(--vscode-textLink-foreground);";
+          item.textContent = `${w.label}${w.category ? ` (${w.category})` : ""}`;
+          wikiList.appendChild(item);
+        }
+        detailPanel.appendChild(wikiList);
+      }
+
+      // Render readme as markdown documentation
+      if (detail.readme) {
+        const docsWrap = document.createElement("div");
+        docsWrap.style.cssText =
+          "max-height: 300px; overflow-y: auto; font-size: 13px; line-height: 1.5; color: var(--vscode-foreground);";
+        docsWrap.innerHTML = marked(detail.readme) as string;
+        detailPanel.appendChild(docsWrap);
+      }
+
+      if (!detail.readme && wikiContribs.length === 0) {
+        const noDoc = document.createElement("div");
+        noDoc.style.cssText =
+          "font-size: 12px; color: var(--vscode-descriptionForeground); font-style: italic;";
+        noDoc.textContent = "No documentation available.";
+        detailPanel.appendChild(noDoc);
+      }
+
+      card.appendChild(detailPanel);
+      expanded = true;
+    } catch {
+      // Store unavailable — silently ignore
+    }
+  });
 }
 
 function createCardIcon(): HTMLElement {

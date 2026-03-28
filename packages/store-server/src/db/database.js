@@ -50,9 +50,17 @@ function migrateSchema(database) {
   }
 }
 
+export function resetDatabase() {
+  if (db) {
+    db.close();
+    db = null;
+  }
+}
+
 export function getDatabase() {
   if (!db) {
-    db = new DatabaseSync(join(__dirname, "../../store-data/store.db"));
+    const dataDir = process.env.STORE_DATA_DIR || join(__dirname, "../../store-data");
+    db = new DatabaseSync(join(dataDir, "store.db"));
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA foreign_keys = ON");
 

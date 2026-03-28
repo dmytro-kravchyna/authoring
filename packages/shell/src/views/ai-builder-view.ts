@@ -10,6 +10,7 @@
 
 import type { ViewerInstance } from "@bim-ide/viewer";
 import { createColumnType, createWallType, createWindowType, createDoorType } from "@bim-ide/viewer";
+import { marked } from "marked";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -26,7 +27,7 @@ interface Session {
 
 // API key storage
 const API_KEY_STORAGE = "bim-ide-anthropic-api-key";
-const STORE_URL = "http://localhost:4000/api";
+const STORE_URL = import.meta.env.VITE_STORE_URL || "/api";
 
 export function createAIBuilderView(container: HTMLElement, viewer: ViewerInstance) {
   container.innerHTML = "";
@@ -256,24 +257,39 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
   async function handleBundle() {
     if (session.commands.length === 0) return;
 
-    const indicator = addSystemIndicator("Summarizing session...");
+    const indicator = addSystemIndicator("Generating summary and documentation...");
 
     try {
-      // Step 1: Summarize
-      const summary = await summarizeSession(apiKey, session);
+      // Step 1: Summarize and generate documentation in parallel
+      const [summary, documentation] = await Promise.all([
+        summarizeSession(apiKey, session),
+        generateDocumentation(apiKey, session, {
+          name: "",
+          description: "",
+          elementKinds: session.registeredKinds,
+        }),
+      ]);
       indicator.remove();
 
+      // Step 2: Show summary
       addAssistantMessage(
         `<b>Bundle Summary</b>\n\n` +
         `<b>Name:</b> ${summary.name}\n` +
         `<b>Description:</b> ${summary.description}\n` +
         `<b>Elements created:</b> ${session.createdContractIds.length}\n` +
         `<b>Commands:</b> ${session.commands.length}\n` +
-        (summary.elementKinds.length > 0 ? `<b>Element types:</b> ${summary.elementKinds.join(", ")}\n` : "") +
-        "\nWould you like to bundle this as an installable extension?"
+        (summary.elementKinds.length > 0 ? `<b>Element types:</b> ${summary.elementKinds.join(", ")}\n` : "")
       );
 
-      // Step 2: Confirm UI
+      // Step 2b: Show documentation preview
+      const docsPreview = document.createElement("div");
+      docsPreview.className = "ai-chat-message assistant";
+      docsPreview.style.cssText = "max-height: 300px; overflow-y: auto; border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 12px; margin: 4px 12px;";
+      docsPreview.innerHTML = `<div style="font-size: 11px; text-transform: uppercase; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Generated Documentation</div>${marked(documentation)}`;
+      messagesArea.appendChild(docsPreview);
+      messagesArea.scrollTop = messagesArea.scrollHeight;
+
+      // Step 3: Confirm UI
       const confirmWrap = document.createElement("div");
       confirmWrap.style.cssText = "display: flex; gap: 8px; padding: 8px 12px;";
 
@@ -295,11 +311,11 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
           confirmWrap.remove();
           const genIndicator = addSystemIndicator("Generating extension bundle...");
           try {
-            // Step 3: Generate extension module
+            // Step 4: Generate extension module
             const extensionCode = await generateExtensionModule(apiKey, session, summary);
             genIndicator.remove();
 
-            // Step 4: Build manifest
+            // Step 5: Build manifest with documentation and wiki contribution
             const manifest = {
               id: summary.suggestedId,
               name: summary.name,
@@ -307,12 +323,20 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
               description: summary.description,
               author: "AI Builder",
               main: "bundle.js",
+              readme: documentation,
               contributes: {
                 elements: summary.elementKinds.map((k: string) => ({ kind: k, entrypoint: "bundle.js" })),
+                wiki: [
+                  {
+                    path: `${summary.suggestedId}/overview`,
+                    category: "features",
+                    title: summary.name,
+                  },
+                ],
               },
             };
 
-            // Step 5: Publish
+            // Step 6: Publish
             const pubIndicator = addSystemIndicator("Publishing to Extension Store...");
             try {
               await publishExtension(manifest, extensionCode);
@@ -337,6 +361,7 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
         });
         cancelBtn.addEventListener("click", () => {
           confirmWrap.remove();
+          docsPreview.remove();
           addAssistantMessage("Bundle cancelled. Continue building or try again.");
           resolve();
         });
@@ -652,6 +677,30 @@ Respond with ONLY a JSON object:
 }`;
 }
 
+function getDocumentationPrompt(): string {
+  return `You are generating documentation for a BIM IDE extension that was created via an AI-assisted session. Given the session details and extension summary, produce a Markdown README.
+
+Include these sections:
+# <Extension Name>
+
+## Overview
+One paragraph explaining what this extension does and why it's useful.
+
+## What It Creates
+Bullet list of elements, types, or features this extension adds to the BIM model.
+
+## Usage
+Step-by-step instructions on how to use the extension after installing it.
+
+## Element Types
+If the extension defines new element kinds, describe each one with its parameters.
+
+## Configuration
+If the extension uses configurable parameters (grid size, spacing, dimensions), list them.
+
+Respond with ONLY the Markdown content — no code fences wrapping the entire response.`;
+}
+
 function getExtensionGeneratorPrompt(): string {
   return `You are generating an ESM extension module for a BIM IDE. The extension must implement the activate/deactivate pattern.
 
@@ -793,6 +842,25 @@ async function generateExtensionModule(
   const code = extractCode(text);
   if (!code) throw new Error("Could not extract extension code");
   return code;
+}
+
+async function generateDocumentation(
+  apiKey: string,
+  session: Session,
+  summary: { name: string; description: string; elementKinds: string[] }
+): Promise<string> {
+  const commandSummary = session.commands
+    .map((c, i) => `${i + 1}. "${c.prompt}"`)
+    .join("\n");
+
+  const content =
+    `Extension name: ${summary.name}\n` +
+    `Description: ${summary.description}\n` +
+    `Element kinds: ${summary.elementKinds.join(", ") || "none"}\n\n` +
+    `Session commands:\n${commandSummary}\n\n` +
+    `Elements created: ${session.createdContractIds.length}`;
+
+  return await callClaudeWithSystemPrompt(apiKey, getDocumentationPrompt(), content);
 }
 
 // ── Publish ─────────────────────────────────────────────────────────

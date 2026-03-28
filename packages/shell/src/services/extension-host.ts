@@ -136,13 +136,13 @@ export class ExtensionHost {
           const wrapped = {
             ...def,
             generateGeometry(_engine: unknown, contract: any, doc: any, options?: any) {
-              return origGen(THREE, contract, doc, options);
+              return origGen(THREE as any, contract, doc, options);
             },
           };
           viewer.registerElement(wrapped);
         },
         registerTool(tool, descriptor) {
-          viewer.registerTool(tool, descriptor.label, descriptor.category);
+          viewer.registerTool(tool, descriptor.label, descriptor.category as "create" | "edit" | undefined);
           registeredTools.push(tool);
         },
         registerCommand(cmd) {

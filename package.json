@@ -1,9 +1,13 @@
 {
   "name": "bim-ide",
   "private": true,
+  "type": "module",
   "workspaces": [
     "packages/*"
   ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
     "dev": "cd packages/shell && npx vite --host --port 3000",
     "dev:viewer": "cd packages/viewer && npx vite --host --port 3001",

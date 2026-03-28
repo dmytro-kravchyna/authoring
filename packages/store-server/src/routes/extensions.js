@@ -7,14 +7,19 @@ import { fileURLToPath } from "url";
 import { createHash } from "crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const STORE_DATA = join(__dirname, "../../store-data/packages");
+const STORE_DATA = process.env.STORE_DATA_DIR
+  ? join(process.env.STORE_DATA_DIR, "packages")
+  : join(__dirname, "../../store-data/packages");
 
 // Ensure storage directory exists
 if (!existsSync(STORE_DATA)) {
   mkdirSync(STORE_DATA, { recursive: true });
 }
 
-const upload = multer({ dest: join(__dirname, "../../store-data/tmp") });
+const uploadDest = process.env.STORE_DATA_DIR
+  ? join(process.env.STORE_DATA_DIR, "tmp")
+  : join(__dirname, "../../store-data/tmp");
+const upload = multer({ dest: uploadDest });
 
 const router = Router();
 
@@ -180,6 +185,7 @@ router.post("/", upload.single("bundle"), (req, res) => {
       author_id = null, main = "", permissions = [],
       min_app_version = "", icon_url = "", repository_url = "",
       category = "", undoAware = false, actionCategories = [],
+      readme = "",
     } = manifest;
 
     if (!id || !name || !version) {
@@ -201,25 +207,26 @@ router.post("/", upload.single("bundle"), (req, res) => {
            name = ?, version = ?, description = ?, author = ?, author_id = ?,
            manifest = ?, entry_point = ?, bundle_hash = ?, permissions = ?,
            min_app_version = ?, icon_url = ?, repository_url = ?, category = ?,
-           undo_aware = ?, action_categories = ?, updated_at = datetime('now')
+           undo_aware = ?, action_categories = ?, readme = ?,
+           updated_at = datetime('now')
          WHERE id = ?`
       ).run(
         name, version, description, author, author_id,
         JSON.stringify(manifest), main, bundleHash, JSON.stringify(permissions),
         min_app_version, icon_url, repository_url, category,
-        undoAware ? 1 : 0, JSON.stringify(actionCategories), id
+        undoAware ? 1 : 0, JSON.stringify(actionCategories), readme, id
       );
     } else {
       db.prepare(
         `INSERT INTO extensions
            (id, name, version, description, author, author_id, license, manifest,
             entry_point, bundle_hash, permissions, min_app_version, icon_url,
-            repository_url, category, undo_aware, action_categories)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            repository_url, category, undo_aware, action_categories, readme)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         id, name, version, description, author, author_id, license, JSON.stringify(manifest),
         main, bundleHash, JSON.stringify(permissions), min_app_version, icon_url,
-        repository_url, category, undoAware ? 1 : 0, JSON.stringify(actionCategories)
+        repository_url, category, undoAware ? 1 : 0, JSON.stringify(actionCategories), readme
       );
     }
 
@@ -255,10 +262,10 @@ router.get("/:id/download", (req, res) => {
   // Increment download count
   db.prepare("UPDATE extensions SET downloads = downloads + 1 WHERE id = ?").run(req.params.id);
 
-  // Get latest version
+  // Get the version matching the current extension version (set on publish)
   const ver = db
-    .prepare("SELECT * FROM versions WHERE extension_id = ? ORDER BY published_at DESC LIMIT 1")
-    .get(req.params.id);
+    .prepare("SELECT * FROM versions WHERE extension_id = ? AND version = ?")
+    .get(req.params.id, ext.version);
 
   if (!ver || !ver.bundle_path) {
     return res.status(404).json({ error: "No bundle available" });
