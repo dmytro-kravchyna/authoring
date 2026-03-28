@@ -2,7 +2,7 @@ import type { BimDocument } from "../core/document";
 import { sendMessage } from "./claude-client";
 import type { SessionTracker } from "./session-tracker";
 
-const STORE_URL = "http://localhost:4000/api/extensions";
+const STORE_URL = "https://authoring-eight.vercel.app/api/extensions";
 
 const BUNDLE_PROMPT = `You are a code bundler. Given a session of AI-generated BIM operations, create a clean, reusable extension.
 

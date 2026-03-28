@@ -114,7 +114,13 @@
       "Bash(git stash:*)",
       "Bash(chmod +x /Users/dmk/Projects/private/authoring/scripts/prod.sh)",
       "WebFetch(domain:authoring-eight.vercel.app)",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(vercel --version)",
+      "Bash(npm i:*)",
+      "Bash(vercel --prod)",
+      "Bash(vercel logs:*)",
+      "Bash(curl -s -w \"\\\\nHTTP_CODE:%{http_code}\" https://authoring-eight.vercel.app/api/health)",
+      "Bash(vercel inspect:*)"
     ]
   }
 }
