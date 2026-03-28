@@ -111,7 +111,9 @@
       "Bash(npm -w packages/store-server uninstall sql.js)",
       "Bash(curl -s https://authoring-eight.vercel.app/api/extensions)",
       "Bash(git pull:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(chmod +x /Users/dmk/Projects/private/authoring/scripts/prod.sh)",
+      "WebFetch(domain:authoring-eight.vercel.app)"
     ]
   }
 }
