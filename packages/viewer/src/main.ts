@@ -7,6 +7,7 @@ import { createViewer } from "./index";
 import { SidePanel } from "./ui/side-panel";
 import { createToolbar } from "./ui/toolbar";
 import { createSnapPanel } from "./ui/snap-panel";
+import { AiChatTab } from "./ai/chat-tab";
 
 async function main() {
   const container = document.getElementById("canvas-container")!;
@@ -29,6 +30,10 @@ async function main() {
   });
   sidePanel.addTab("materials", "Materials", () => {
     viewer.materialsTab.render(sidePanel.content);
+  });
+  const aiTab = new AiChatTab(viewer.doc);
+  sidePanel.addTab("ai", "AI", () => {
+    aiTab.render(sidePanel.content);
   });
   sidePanel.addTab("properties", "Properties", () => {
     const selected = viewer.selectTool.getSelectedContract();
