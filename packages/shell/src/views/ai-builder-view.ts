@@ -11,6 +11,8 @@
 import type { ViewerInstance, Tool } from "@bim-ide/viewer";
 import { createColumnType, createWallType, createWindowType, createDoorType, interceptAndAugment, type ContributionIntent } from "@bim-ide/viewer";
 import { marked } from "marked";
+import type { ExtensionHost } from "../services/extension-host";
+import { DraftFeaturePanel } from "../layout/draft-feature-panel";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -44,17 +46,22 @@ interface Session {
 const API_KEY_STORAGE = "bim-ide-anthropic-api-key";
 const STORE_URL = import.meta.env.VITE_STORE_URL || "/api";
 
-export function createAIBuilderView(container: HTMLElement, viewer: ViewerInstance) {
+export function createAIBuilderView(
+  container: HTMLElement,
+  viewer: ViewerInstance,
+  extensionHost: ExtensionHost,
+  editorArea: HTMLElement,
+) {
   container.innerHTML = "";
   const apiKey = localStorage.getItem(API_KEY_STORAGE) ?? "";
   if (!apiKey) {
-    renderApiKeySetup(container, viewer);
+    renderApiKeySetup(container, viewer, extensionHost, editorArea);
   } else {
-    renderChat(container, viewer, apiKey);
+    renderChat(container, viewer, apiKey, extensionHost, editorArea);
   }
 }
 
-function renderApiKeySetup(container: HTMLElement, viewer: ViewerInstance) {
+function renderApiKeySetup(container: HTMLElement, viewer: ViewerInstance, extensionHost: ExtensionHost, editorArea: HTMLElement) {
   const wrap = document.createElement("div");
   wrap.style.cssText = "padding: 16px; display: flex; flex-direction: column; gap: 12px;";
 
@@ -83,7 +90,7 @@ function renderApiKeySetup(container: HTMLElement, viewer: ViewerInstance) {
     if (!key) return;
     localStorage.setItem(API_KEY_STORAGE, key);
     container.innerHTML = "";
-    renderChat(container, viewer, key);
+    renderChat(container, viewer, key, extensionHost, editorArea);
   });
   wrap.appendChild(btn);
 
@@ -107,12 +114,21 @@ function createSession(): Session {
   };
 }
 
-function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: string) {
+function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: string, extensionHost: ExtensionHost, editorArea: HTMLElement) {
   const chat = document.createElement("div");
   chat.className = "ai-chat";
 
   const messages: ChatMessage[] = [];
   let session = createSession();
+
+  // ── Draft Feature Panel (floating over 3D editor) ──
+  const draftPanel = new DraftFeaturePanel();
+  editorArea.appendChild(draftPanel.element);
+
+  draftPanel.onRun = () => handleRun();
+  draftPanel.onStopTest = () => handleStopTest();
+  draftPanel.onBundle = () => handleBundle();
+  draftPanel.onDiscard = () => handleDiscard();
 
   // Messages area
   const messagesArea = document.createElement("div");
@@ -144,22 +160,21 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
   btnBar.style.cssText = "display: flex; gap: 4px; align-items: flex-end;";
 
   const sendBtn = document.createElement("button");
-  sendBtn.className = "ai-chat-send";
+  sendBtn.className = "btn-primary";
   sendBtn.textContent = "Send";
   btnBar.appendChild(sendBtn);
 
   const bundleBtn = document.createElement("button");
-  bundleBtn.className = "ai-chat-send";
+  bundleBtn.className = "btn-secondary";
   bundleBtn.textContent = "Bundle";
-  bundleBtn.style.cssText = "background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);";
   bundleBtn.disabled = true;
   btnBar.appendChild(bundleBtn);
 
   const newSessionBtn = document.createElement("button");
-  newSessionBtn.className = "ai-chat-send";
+  newSessionBtn.className = "btn-secondary";
   newSessionBtn.textContent = "New";
   newSessionBtn.title = "Start a new session";
-  newSessionBtn.style.cssText = "background: transparent; color: var(--vscode-descriptionForeground); min-width: 36px; padding: 4px;";
+  newSessionBtn.style.opacity = "0.7";
   btnBar.appendChild(newSessionBtn);
 
   inputArea.appendChild(btnBar);
@@ -179,7 +194,7 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
   settingsLink.addEventListener("click", () => {
     localStorage.removeItem(API_KEY_STORAGE);
     container.innerHTML = "";
-    renderApiKeySetup(container, viewer);
+    renderApiKeySetup(container, viewer, extensionHost, editorArea);
   });
   container.appendChild(settingsLink);
 
@@ -229,6 +244,11 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
 
     input.value = "";
 
+    // Auto-exit test mode when the user continues iterating
+    if (draftPanel.isTesting) {
+      await handleStopTest();
+    }
+
     // Intercept and classify intent, augment prompt for tool/command contributions
     const { augmented, intent } = interceptAndAugment(prompt);
 
@@ -237,6 +257,12 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
     const indicator = addSystemIndicator(
       intent !== "action" ? `Generating ${intent} definition...` : "Building..."
     );
+
+    // Show draft panel pulsing while AI reasons
+    if (session.commands.length === 0) {
+      draftPanel.show(prompt.length > 60 ? prompt.slice(0, 57) + "..." : prompt);
+    }
+    draftPanel.setReasoning(true);
 
     try {
       // Send augmented prompt (with contribution guidance) to the AI
@@ -248,14 +274,59 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
       // The messages array already had addUserMessage push the original, so we use augmentedMessages for the API call
       const response = await callClaudeAPI(apiKey, augmentedMessages);
 
+      draftPanel.setReasoning(false);
       indicator.remove();
 
       if (response.error) {
         addAssistantMessage(`Error: ${response.error}`);
+        if (session.commands.length === 0) draftPanel.hide();
         return;
       }
 
-      const code = extractCode(response.content);
+      // Parse BIM reasoning block if present
+      const reasoningMatch = response.content.match(/<bim-reasoning>([\s\S]*?)<\/bim-reasoning>/);
+      if (reasoningMatch) {
+        const reasoningText = reasoningMatch[1].trim();
+        const details = document.createElement("details");
+        details.className = "bim-reasoning";
+        details.open = true;
+        const summary = document.createElement("summary");
+        summary.textContent = "BIM Reasoning";
+        details.appendChild(summary);
+        const body = document.createElement("div");
+        body.className = "bim-reasoning-body";
+        for (const line of reasoningText.split("\n")) {
+          const trimmed = line.replace(/^[-*]\s*/, "").trim();
+          if (!trimmed) continue;
+          // Detect "Category: content" pattern
+          const categoryMatch = trimmed.match(/^([A-Z][^:]+):\s*(.+)/);
+          if (categoryMatch) {
+            const row = document.createElement("div");
+            row.className = "bim-reasoning-row";
+            const label = document.createElement("span");
+            label.className = "bim-reasoning-label";
+            label.textContent = categoryMatch[1];
+            const value = document.createElement("span");
+            value.className = "bim-reasoning-value";
+            value.textContent = categoryMatch[2];
+            row.appendChild(label);
+            row.appendChild(value);
+            body.appendChild(row);
+          } else {
+            const p = document.createElement("div");
+            p.className = "bim-reasoning-row";
+            p.textContent = trimmed;
+            body.appendChild(p);
+          }
+        }
+        details.appendChild(body);
+        messagesArea.appendChild(details);
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+      }
+
+      // Strip reasoning block before extracting code
+      const contentForCode = response.content.replace(/<bim-reasoning>[\s\S]*?<\/bim-reasoning>/, "").trim();
+      const code = extractCode(contentForCode);
 
       if (response.truncated && code) {
         addAssistantMessage(
@@ -276,6 +347,13 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
             : intent;
           session.commands.push({ prompt, code, timestamp: Date.now(), contributionType: contributionType as ContributionIntent });
           updateSessionIndicator();
+
+          // Update draft panel status
+          draftPanel.updateStatus(
+            session.commands.length,
+            session.createdContractIds.length,
+            session.registeredKinds.length,
+          );
 
           const newCount = result.newContractIds.length;
           const kindInfo = result.newKinds.length > 0
@@ -302,6 +380,7 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
         addAssistantMessage(response.content);
       }
     } catch (err: any) {
+      draftPanel.setReasoning(false);
       indicator.remove();
       addAssistantMessage(`Failed to reach AI: ${err.message}`);
     }
@@ -391,21 +470,39 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
               },
             };
 
-            // Step 6: Publish
+            // Step 6: Publish & auto-install
             const pubIndicator = addSystemIndicator("Publishing to Extension Store...");
+            let bundleUrl: string | null = null;
             try {
               await publishExtension(manifest, extensionCode);
+              bundleUrl = `${STORE_URL}/extensions/${manifest.id}/download`;
               pubIndicator.remove();
-              addAssistantMessage(
-                `Extension "<b>${summary.name}</b>" published successfully!\n\n` +
-                "Other users can now find and install it from the Extensions marketplace."
-              );
             } catch (pubErr: any) {
               pubIndicator.remove();
+              // Fallback: create blob URL so we can still install locally
+              const blob = new Blob([extensionCode], { type: "application/javascript" });
+              bundleUrl = URL.createObjectURL(blob);
               addAssistantMessage(
-                `Published locally but could not reach the Extension Store: ${pubErr.message}\n\n` +
-                "Make sure the store server is running (npm run dev:store)."
+                `Could not reach the Extension Store: ${pubErr.message}\n` +
+                "Installing locally instead."
               );
+            }
+
+            // Auto-install the extension via ExtensionHost
+            try {
+              await extensionHost.loadExtension(manifest as any, bundleUrl);
+              await draftPanel.animateBundleTransition();
+              draftPanel.hide();
+              addAssistantMessage(
+                `Extension "<b>${summary.name}</b>" is now installed!\n\n` +
+                "Its command has been added to the toolbar. You can also find it in the Extensions panel."
+              );
+            } catch (installErr: any) {
+              addAssistantMessage(
+                `Published but auto-install failed: ${installErr.message}\n\n` +
+                "You can install it manually from the Extensions marketplace."
+              );
+              draftPanel.hide();
             }
             resolve();
           } catch (err: any) {
@@ -427,11 +524,118 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
     }
   }
 
-  function handleNewSession() {
-    // Clean up tools registered during the current session
+  /**
+   * Clear the scene of all session elements and unregister session tools.
+   * Resets the tracking arrays so they can be repopulated by re-execution.
+   */
+  function clearSessionFromScene() {
+    viewer.doc.transaction(() => {
+      for (const id of session.createdContractIds) {
+        if (viewer.doc.contracts.has(id)) {
+          viewer.doc.remove(id);
+        }
+      }
+    });
     for (const toolMeta of session.registeredTools) {
       viewer.unregisterTool(toolMeta.tool);
     }
+    session.createdContractIds.length = 0;
+    session.registeredTools.length = 0;
+    session.registeredKinds.length = 0;
+    session.registeredCommands.length = 0;
+  }
+
+  /**
+   * Re-execute every command in the session to recreate elements
+   * in the scene. Returns step success/failure counts.
+   */
+  async function replaySession(): Promise<{ ok: number; fail: number }> {
+    let ok = 0;
+    let fail = 0;
+    for (let i = 0; i < session.commands.length; i++) {
+      try {
+        const result = await loadGeneratedCode(session.commands[i].code, viewer, session);
+        ok++;
+        console.log(`[AI Builder] Replay step ${i + 1}/${session.commands.length} OK — ${result.newContractIds.length} elements`);
+      } catch (err: any) {
+        fail++;
+        console.error(`[AI Builder] Replay step ${i + 1} failed:`, err);
+      }
+    }
+    return { ok, fail };
+  }
+
+  async function handleRun() {
+    if (session.commands.length === 0) return;
+
+    draftPanel.setRunning(true);
+    const indicator = addSystemIndicator("Running test preview — clearing and re-executing all steps...");
+
+    clearSessionFromScene();
+    const { ok, fail } = await replaySession();
+
+    indicator.remove();
+    draftPanel.setRunning(false);
+    draftPanel.enterTesting();
+    draftPanel.updateStatus(
+      session.commands.length,
+      session.createdContractIds.length,
+      session.registeredKinds.length,
+    );
+
+    if (fail === 0) {
+      addAssistantMessage(
+        `Test preview complete — all ${ok} step${ok !== 1 ? "s" : ""} executed successfully.\n\n` +
+        `${session.createdContractIds.length} element${session.createdContractIds.length !== 1 ? "s" : ""} in the scene. ` +
+        'Inspect the result in the 3D view. Click <b>Stop Test</b> to return to editing, or <b>Bundle</b> if satisfied.'
+      );
+    } else {
+      addAssistantMessage(
+        `Test preview: ${ok} step${ok !== 1 ? "s" : ""} succeeded, ${fail} failed.\n\n` +
+        'Click <b>Stop Test</b> to return to draft mode and describe what needs fixing.'
+      );
+    }
+    updateSessionIndicator();
+  }
+
+  async function handleStopTest() {
+    if (!draftPanel.isTesting) return;
+
+    draftPanel.setRunning(true);
+    const indicator = addSystemIndicator("Restoring draft state...");
+
+    // Clear the test-run elements, then replay to restore the draft scene
+    clearSessionFromScene();
+    await replaySession();
+
+    indicator.remove();
+    draftPanel.setRunning(false);
+    draftPanel.exitTesting();
+    draftPanel.updateStatus(
+      session.commands.length,
+      session.createdContractIds.length,
+      session.registeredKinds.length,
+    );
+    addAssistantMessage(
+      "Test ended — back to draft mode. Elements have been restored.\n\n" +
+      "Continue iterating or Bundle when ready."
+    );
+    updateSessionIndicator();
+  }
+
+  function handleDiscard() {
+    clearSessionFromScene();
+    draftPanel.hide();
+    session = createSession();
+    messages.length = 0;
+    messagesArea.innerHTML = "";
+    addAssistantMessage("Draft discarded. Start a new feature.");
+    updateSessionIndicator();
+  }
+
+  function handleNewSession() {
+    clearSessionFromScene();
+    draftPanel.hide();
     session = createSession();
     messages.length = 0;
     messagesArea.innerHTML = "";
@@ -916,7 +1120,27 @@ export const elementDefinition = {
 };
 \`\`\`
 
-Respond with ONLY the code block. No explanations — the user doesn't see the code.`;
+## BIM Reasoning Protocol
+
+You MUST include a detailed reasoning section BEFORE every code block, wrapped in <bim-reasoning> tags. This reasoning is shown directly to the user so they understand what the feature does and why decisions were made. Write it as a helpful explanation, not internal notes.
+
+Use this structure — include every applicable category, skip those that truly don't apply:
+
+<bim-reasoning>
+- What this does: [Plain-language summary of what will be created/modified and the end result the user will see]
+- Structural: [Load paths, support conditions, why these element types were chosen, column grid logic, bearing wall placement rationale]
+- Spatial layout: [Room dimensions, clearances, circulation widths, adjacencies, why elements are positioned where they are]
+- Dimensions & standards: [Specific measurements used and why — reference standard modules (300/600/1200mm), typical storey heights (2.7-3.5m), door widths (900mm+), corridor minimums (1.2m)]
+- Materials & types: [Which material/type definitions are used, why those choices make sense for the building context]
+- Building code: [Egress widths, stair dimensions, window-to-floor ratios, fire separation, accessibility considerations]
+- Coordination: [MEP routing space, service zones, clash avoidance with existing elements]
+- Elevation & levels: [Which level/elevation elements are placed at, floor-to-floor logic]
+- Limitations: [What this feature does NOT handle, assumptions made, what the user might want to refine next]
+</bim-reasoning>
+
+Be specific — use actual numbers, not placeholders. For example write "Walls are 200mm thick at 3.0m height, standard for interior partitions" instead of "Realistic dimensions used". The user should be able to read the reasoning and fully understand what will appear in the model and why each decision was made.
+
+Include the reasoning block, then the code block.`;
 }
 
 function getBundleSummaryPrompt(): string {
@@ -1326,11 +1550,12 @@ async function loadGeneratedCode(
   let finalCode: string;
 
   if (hasToolDef || hasCommandDef) {
-    // For Mode C/D: inject viewer + typeIds at the top module scope.
+    // For Mode C/D: inject viewer, THREE, and typeIds at the top module scope.
     // Lifecycle exports are module-scoped (not wrapped in a function that
-    // receives viewer), so we expose viewer via a temporary global.
+    // receives viewer), so we expose viewer and THREE via window globals.
     finalCode =
       `const viewer = window.__bimViewerForAI;\n` +
+      `const THREE = window.THREE;\n` +
       `// Auto-injected typeId variables\n${typeIdDeclarations}\n\n${jsCode}`;
   } else {
     // Mode A/B: inject typeIds inside the default function body
@@ -1399,8 +1624,9 @@ async function loadGeneratedCode(
   const blob = new Blob([executableCode], { type: "text/javascript" });
   const url = URL.createObjectURL(blob);
 
-  // Expose viewer on window so Mode C/D module-scoped code can access it.
-  // Attach a selection helper API so AI-generated code can operate on selected elements.
+  // Expose viewer and THREE on window permanently so Mode C/D module-scoped
+  // code can access them. Tool lifecycle functions (activate, onPointerDown, etc.)
+  // fire long after loadGeneratedCode returns, so these must persist.
   if (!(viewer as any).selection) {
     (viewer as any).selection = {
       getAll: () => viewer.selectTool.getSelectedContractsAll(),
@@ -1410,6 +1636,7 @@ async function loadGeneratedCode(
     };
   }
   (window as any).__bimViewerForAI = viewer;
+  (window as any).THREE = (viewer as any).THREE;
 
   try {
     const module = await import(/* @vite-ignore */ url);
@@ -1501,7 +1728,8 @@ async function loadGeneratedCode(
   } finally {
     URL.revokeObjectURL(url);
     viewer.doc.onAdded.remove(handler);
-    delete (window as any).__bimViewerForAI;
+    // NOTE: window.__bimViewerForAI and window.THREE are kept permanently
+    // because Mode C tool lifecycle functions reference them after this returns.
   }
 
   // Update session

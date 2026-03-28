@@ -781,3 +781,165 @@ body {
   flex: 1;
   overflow: auto;
 }
+
+/* ── Draft Feature Panel ──────────────────────────────── */
+
+.draft-feature-panel {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--vscode-editor-background);
+  border: 2px dashed var(--vscode-focusBorder);
+  border-radius: 8px;
+  z-index: 14;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+  opacity: 0.92;
+  transition: all 0.3s ease;
+  max-width: 80%;
+  pointer-events: auto;
+}
+
+.draft-feature-panel.hidden {
+  display: none;
+}
+
+.draft-feature-panel.reasoning {
+  border-color: var(--vscode-progressBar-background);
+  animation: draft-pulse 2s ease-in-out infinite;
+}
+
+@keyframes draft-pulse {
+  0%, 100% { border-color: var(--vscode-focusBorder); opacity: 0.92; }
+  50% { border-color: var(--vscode-progressBar-background); opacity: 1; }
+}
+
+.draft-badge {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vscode-badge-foreground);
+  background: var(--vscode-badge-background);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.draft-badge-testing {
+  background: var(--vscode-testing-iconPassed, #388a34);
+  color: #fff;
+}
+
+.draft-feature-panel.testing {
+  border-color: var(--vscode-testing-iconPassed, #388a34);
+}
+
+.draft-btn-run {
+  background: var(--vscode-testing-iconPassed, #388a34) !important;
+  color: #fff !important;
+}
+
+.draft-feature-panel.testing .draft-btn-run {
+  background: var(--vscode-testing-iconFailed, #c74e4e) !important;
+}
+
+.draft-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.draft-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.draft-status {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.draft-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.draft-feature-panel.bundle-transition {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(-50%) scale(0.3);
+  opacity: 0;
+  bottom: 50%;
+}
+
+/* ── BIM Reasoning Block ──────────────────────────────── */
+
+.bim-reasoning {
+  margin: 0 12px 8px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--vscode-focusBorder);
+  background: var(--vscode-editor-background);
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.bim-reasoning summary {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-focusBorder);
+  user-select: none;
+  margin-bottom: 6px;
+}
+
+.bim-reasoning-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bim-reasoning-row {
+  display: flex;
+  gap: 6px;
+  line-height: 1.4;
+}
+
+.bim-reasoning-label {
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.bim-reasoning-label::after {
+  content: ":";
+}
+
+.bim-reasoning-value {
+  color: var(--vscode-descriptionForeground);
+}
+
+/* ── Toolbar New Command Flash ────────────────────────── */
+
+.floating-toolbar button.toolbar-btn-new {
+  animation: toolbar-flash 0.5s ease 3;
+}
+
+@keyframes toolbar-flash {
+  0%, 100% { background: transparent; }
+  50% { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+}

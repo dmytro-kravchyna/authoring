@@ -171,6 +171,10 @@ export class FloatingToolbar {
         this.extensionHost.executeCommand(cmd.id);
       });
       this.commandSection.appendChild(btn);
+
+      // Flash newly added buttons to draw attention
+      btn.classList.add("toolbar-btn-new");
+      setTimeout(() => btn.classList.remove("toolbar-btn-new"), 2000);
     }
   }
 }

@@ -137,7 +137,7 @@ async function bootstrap() {
     createExtensionsView(container, extensionHost);
   });
   sidebar.registerView("ai-builder", "AI Feature Builder", (container) => {
-    createAIBuilderView(container, viewer);
+    createAIBuilderView(container, viewer, extensionHost, editorArea);
   });
 
   // ── Wire activity bar ──
