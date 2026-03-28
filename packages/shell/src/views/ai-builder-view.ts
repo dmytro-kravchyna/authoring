@@ -19,15 +19,7 @@ const API_KEY_STORAGE = "bim-ide-anthropic-api-key";
 
 export function createAIBuilderView(container: HTMLElement, viewer: ViewerInstance) {
   container.innerHTML = "";
-
-  const apiKey = localStorage.getItem(API_KEY_STORAGE) ?? "";
-
-  // If no API key, show setup
-  if (!apiKey) {
-    renderApiKeySetup(container, viewer);
-    return;
-  }
-
+const apiKey = localStorage.getItem(API_KEY_STORAGE) ?? "";
   renderChat(container, viewer, apiKey);
 }
 
@@ -318,7 +310,7 @@ async function callClaudeAPI(
         "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 4096,
         system: getSystemPrompt(),
         messages: [{ role: "user", content: userPrompt }],
@@ -353,7 +345,7 @@ async function runBIMReview(
         "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 1024,
         system: getReviewerPrompt(),
         messages: [
