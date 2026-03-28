@@ -110,8 +110,8 @@
       "Bash(npm -w packages/store-server install sql.js)",
       "Bash(npm -w packages/store-server uninstall sql.js)",
       "Bash(curl -s https://authoring-eight.vercel.app/api/extensions)",
-      "Bash(git rebase:*)",
-      "Bash(GIT_EDITOR=true git rebase --continue)"
+      "Bash(git pull:*)",
+      "Bash(git stash:*)"
     ]
   }
 }
