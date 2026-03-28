@@ -3,28 +3,20 @@ import type { ToolDescriptor, ViewerInstance } from "@bim-ide/viewer";
 export class FloatingToolbar {
   readonly element: HTMLElement;
   private buttons = new Map<string, HTMLButtonElement>();
+  private viewer: ViewerInstance;
+  private toolSection: HTMLElement;
 
   constructor(viewer: ViewerInstance) {
+    this.viewer = viewer;
     this.element = document.createElement("div");
     this.element.className = "floating-toolbar";
 
-    const descriptors = viewer.getToolDescriptors();
-    const createTools = descriptors.filter((d) => d.category === "create");
-    const editTools = descriptors.filter((d) => d.category === "edit");
+    // Dynamic tool buttons section
+    this.toolSection = document.createElement("span");
+    this.toolSection.style.display = "contents";
+    this.element.appendChild(this.toolSection);
 
-    for (const desc of createTools) {
-      this.addButton(desc, viewer);
-    }
-
-    if (createTools.length > 0 && editTools.length > 0) {
-      const sep = document.createElement("div");
-      sep.className = "separator";
-      this.element.appendChild(sep);
-    }
-
-    for (const desc of editTools) {
-      this.addButton(desc, viewer);
-    }
+    this.rebuildToolButtons();
 
     // Separator before undo/redo
     const sep2 = document.createElement("div");
@@ -98,25 +90,56 @@ export class FloatingToolbar {
     });
     this.element.appendChild(loadBtn);
 
-    // Wire active state
-    viewer.toolMgr.onToolChanged = (name) => {
-      for (const [toolName, btn] of this.buttons) {
-        btn.classList.toggle("active", toolName === name);
-      }
-    };
+    // Subscribe to tool registration changes
+    viewer.onToolsChanged.add(() => this.rebuildToolButtons());
   }
 
-  private addButton(desc: ToolDescriptor, viewer: ViewerInstance) {
+  highlightTool(toolName: string | null) {
+    for (const [name, btn] of this.buttons) {
+      btn.classList.toggle("active", name === toolName);
+    }
+  }
+
+  private rebuildToolButtons() {
+    this.toolSection.innerHTML = "";
+    this.buttons.clear();
+
+    const descriptors: ToolDescriptor[] = this.viewer.getToolDescriptors();
+    const createTools = descriptors.filter((d: ToolDescriptor) => d.category === "create");
+    const editTools = descriptors.filter((d: ToolDescriptor) => d.category === "edit");
+
+    for (const desc of createTools) {
+      this.addButton(desc);
+    }
+
+    if (createTools.length > 0 && editTools.length > 0) {
+      const sep = document.createElement("div");
+      sep.className = "separator";
+      this.toolSection.appendChild(sep);
+    }
+
+    for (const desc of editTools) {
+      this.addButton(desc);
+    }
+
+    // Re-highlight the active tool if any
+    const activeName = this.viewer.toolMgr.getActiveTool()?.name ?? null;
+    if (activeName) {
+      this.buttons.get(activeName)?.classList.add("active");
+    }
+  }
+
+  private addButton(desc: ToolDescriptor) {
     const btn = document.createElement("button");
     btn.textContent = desc.label;
     btn.addEventListener("click", () => {
-      if (viewer.toolMgr.getActiveTool()?.name === desc.tool.name) {
-        viewer.toolMgr.setTool(null);
+      if (this.viewer.toolMgr.getActiveTool()?.name === desc.tool.name) {
+        this.viewer.toolMgr.setTool(null);
       } else {
-        viewer.toolMgr.setTool(desc.tool);
+        this.viewer.toolMgr.setTool(desc.tool);
       }
     });
-    this.element.appendChild(btn);
+    this.toolSection.appendChild(btn);
     this.buttons.set(desc.tool.name, btn);
   }
 }

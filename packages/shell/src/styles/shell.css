@@ -356,6 +356,10 @@ body {
   margin-top: 4px;
 }
 
+.extension-card.extension-disabled {
+  opacity: 0.55;
+}
+
 /* ── Search input ──────────────────────────────────────── */
 
 .search-input {
@@ -436,6 +440,10 @@ body {
 .wiki-nav-item.active {
   background: var(--vscode-list-activeSelectionBackground);
   color: var(--vscode-list-activeSelectionForeground);
+}
+
+.wiki-nav-items.collapsed {
+  display: none;
 }
 
 .wiki-nav-category {

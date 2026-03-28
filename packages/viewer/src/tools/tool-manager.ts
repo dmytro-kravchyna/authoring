@@ -189,13 +189,13 @@ export class ToolManager {
   private handlePointerDown(event: PointerEvent) {
     if (!this.activeTool) return;
     const hit = this.raycastGround(event);
-    this.activeTool.onPointerDown(event, hit);
+    this.activeTool.onPointerDown(event, this.wrapHit(hit));
   }
 
   private handlePointerMove(event: PointerEvent) {
     if (!this.activeTool) return;
     const hit = this.raycastGround(event);
-    this.activeTool.onPointerMove(event, hit);
+    this.activeTool.onPointerMove(event, this.wrapHit(hit));
   }
 
   private handlePointerUp(event: PointerEvent) {
@@ -206,6 +206,16 @@ export class ToolManager {
   private handleKeyDown(event: KeyboardEvent) {
     if (!this.activeTool) return;
     this.activeTool.onKeyDown(event);
+  }
+
+  /**
+   * Wrap a raycast hit so both `hit.x` (built-in tools) and
+   * `hit.point.x` (extension tools) work.
+   */
+  private wrapHit(hit: THREE.Vector3 | null): THREE.Vector3 | null {
+    if (!hit) return null;
+    (hit as any).point = hit;
+    return hit;
   }
 
   /** Sync the THREE.Plane used for raycasting from the work plane definition. */

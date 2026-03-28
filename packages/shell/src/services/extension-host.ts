@@ -6,7 +6,8 @@
  * and manages cleanup on deactivation.
  */
 
-import type { ViewerInstance } from "@bim-ide/viewer";
+import * as THREE from "three";
+import type { ViewerInstance, Tool } from "@bim-ide/viewer";
 import type {
   ExtensionManifest,
   ExtensionModule,
@@ -19,12 +20,14 @@ interface LoadedExtension {
   manifest: ExtensionManifest;
   module: ExtensionModule;
   context: ExtensionContext;
+  registeredTools: Tool[];
 }
 
 export class ExtensionHost {
   private extensions = new Map<string, LoadedExtension>();
   private viewer: ViewerInstance;
   private commands = new Map<string, Command>();
+  private disabledInfo = new Map<string, { manifest: ExtensionManifest; bundleUrl: string }>();
 
   constructor(viewer: ViewerInstance) {
     this.viewer = viewer;
@@ -38,13 +41,14 @@ export class ExtensionHost {
     // Dynamic import of the extension bundle
     const module = (await import(/* @vite-ignore */ bundleUrl)) as ExtensionModule;
 
-    // Create scoped context
-    const context = this.createContext(manifest);
+    // Create scoped context with tool tracking
+    const registeredTools: Tool[] = [];
+    const context = this.createContext(manifest, registeredTools);
 
     // Activate
     await module.activate(context);
 
-    this.extensions.set(manifest.id, { manifest, module, context });
+    this.extensions.set(manifest.id, { manifest, module, context, registeredTools });
     console.log(`[ExtensionHost] Loaded: ${manifest.name} v${manifest.version}`);
   }
 
@@ -60,6 +64,11 @@ export class ExtensionHost {
       sub.dispose();
     }
 
+    // Remove registered tools from viewer
+    for (const tool of ext.registeredTools) {
+      this.viewer.unregisterTool(tool);
+    }
+
     // Remove registered commands
     if (ext.manifest.contributes?.commands) {
       for (const cmd of ext.manifest.contributes.commands) {
@@ -69,6 +78,24 @@ export class ExtensionHost {
 
     this.extensions.delete(id);
     console.log(`[ExtensionHost] Unloaded: ${ext.manifest.name}`);
+  }
+
+  async disableExtension(id: string, bundleUrl: string): Promise<void> {
+    const ext = this.extensions.get(id);
+    if (!ext) return;
+    this.disabledInfo.set(id, { manifest: ext.manifest, bundleUrl });
+    await this.unloadExtension(id);
+  }
+
+  async enableExtension(id: string): Promise<void> {
+    const info = this.disabledInfo.get(id);
+    if (!info) return;
+    this.disabledInfo.delete(id);
+    await this.loadExtension(info.manifest, info.bundleUrl);
+  }
+
+  isDisabled(id: string): boolean {
+    return this.disabledInfo.has(id);
   }
 
   getLoadedExtensions(): ExtensionManifest[] {
@@ -84,7 +111,7 @@ export class ExtensionHost {
     if (cmd) await cmd.handler();
   }
 
-  private createContext(manifest: ExtensionManifest): ExtensionContext {
+  private createContext(manifest: ExtensionManifest, registeredTools: Tool[]): ExtensionContext {
     const viewer = this.viewer;
     const commands = this.commands;
     const subscriptions: Disposable[] = [];
@@ -103,10 +130,20 @@ export class ExtensionHost {
 
       editor: {
         registerElement(def) {
-          viewer.registerElement(def);
+          // Wrap generateGeometry so extensions receive THREE as `engine`
+          // (extensions expect THREE constructors; the registry passes GeometryEngine)
+          const origGen = def.generateGeometry;
+          const wrapped = {
+            ...def,
+            generateGeometry(_engine: unknown, contract: any, doc: any, options?: any) {
+              return origGen(THREE, contract, doc, options);
+            },
+          };
+          viewer.registerElement(wrapped);
         },
         registerTool(tool, descriptor) {
           viewer.registerTool(tool, descriptor.label, descriptor.category);
+          registeredTools.push(tool);
         },
         registerCommand(cmd) {
           const fullId = `${manifest.id}.${cmd.id}`;

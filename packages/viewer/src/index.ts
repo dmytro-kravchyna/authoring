@@ -8,6 +8,7 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { TypedEvent } from "./core/events";
 import type { GeometryEngine } from "@thatopen/fragments";
 import { BimDocument } from "./core/document";
 import { ElementRegistry, type ElementTypeDefinition } from "./core/registry";
@@ -79,7 +80,9 @@ export interface ViewerInstance {
   // Extension points
   registerElement(def: ElementTypeDefinition): void;
   registerTool(tool: Tool, label: string, category?: "create" | "edit"): void;
+  unregisterTool(tool: Tool): void;
   getToolDescriptors(): ToolDescriptor[];
+  onToolsChanged: TypedEvent<void>;
 
   // Status
   setStatus(msg: string): void;
@@ -238,6 +241,7 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
   const allTools: Tool[] = [wallTool, windowTool, doorTool, floorTool, columnTool, selectTool, moveTool, pasteTool];
 
   // --- Tool descriptors ---
+  const onToolsChanged = new TypedEvent<void>();
   const toolDescriptors: ToolDescriptor[] = [
     { tool: wallTool, label: "Wall", category: "create" },
     { tool: windowTool, label: "Window", category: "create" },
@@ -452,10 +456,22 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
     registerTool(tool: Tool, label: string, category: "create" | "edit" = "create") {
       allTools.push(tool);
       toolDescriptors.push({ tool, label, category });
+      onToolsChanged.trigger();
+    },
+    unregisterTool(tool: Tool) {
+      const toolIdx = allTools.indexOf(tool);
+      if (toolIdx !== -1) allTools.splice(toolIdx, 1);
+      const descIdx = toolDescriptors.findIndex(d => d.tool === tool);
+      if (descIdx !== -1) toolDescriptors.splice(descIdx, 1);
+      if (toolMgr.getActiveTool() === tool) {
+        toolMgr.setTool(null);
+      }
+      onToolsChanged.trigger();
     },
     getToolDescriptors() {
       return [...toolDescriptors];
     },
+    onToolsChanged,
     dispose,
     resize,
     save,

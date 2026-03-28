@@ -4,6 +4,7 @@ import { mkdirSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import extensionsRouter from "./routes/extensions.js";
+import authorsRouter from "./routes/authors.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STORE_DATA = join(__dirname, "../store-data");
@@ -21,6 +22,7 @@ app.use(express.json());
 
 // API routes
 app.use("/api/extensions", extensionsRouter);
+app.use("/api/authors", authorsRouter);
 
 // Health check
 app.get("/api/health", (_req, res) => {

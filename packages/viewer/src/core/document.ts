@@ -82,6 +82,10 @@ export class BimDocument {
   }
 
   add(contract: AnyContract): void {
+    // Auto-assign an ID if the caller didn't provide one (common for extensions)
+    if (!contract.id) {
+      (contract as any).id = crypto.randomUUID();
+    }
     if (!this.activeTransaction) {
       const opts = this.transactionGroupId ? { groupId: this.transactionGroupId } : undefined;
       this.transaction(() => this.add(contract), opts);
