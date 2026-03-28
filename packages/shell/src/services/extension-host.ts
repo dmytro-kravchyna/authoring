@@ -28,9 +28,22 @@ export class ExtensionHost {
   private viewer: ViewerInstance;
   private commands = new Map<string, Command>();
   private disabledInfo = new Map<string, { manifest: ExtensionManifest; bundleUrl: string }>();
+  private commandListeners: Array<() => void> = [];
 
   constructor(viewer: ViewerInstance) {
     this.viewer = viewer;
+  }
+
+  onCommandsChanged(fn: () => void): () => void {
+    this.commandListeners.push(fn);
+    return () => {
+      const idx = this.commandListeners.indexOf(fn);
+      if (idx >= 0) this.commandListeners.splice(idx, 1);
+    };
+  }
+
+  private fireCommandsChanged() {
+    for (const fn of this.commandListeners) fn();
   }
 
   async loadExtension(manifest: ExtensionManifest, bundleUrl: string): Promise<void> {
@@ -49,6 +62,7 @@ export class ExtensionHost {
     await module.activate(context);
 
     this.extensions.set(manifest.id, { manifest, module, context, registeredTools });
+    this.fireCommandsChanged();
     console.log(`[ExtensionHost] Loaded: ${manifest.name} v${manifest.version}`);
   }
 
@@ -77,6 +91,7 @@ export class ExtensionHost {
     }
 
     this.extensions.delete(id);
+    this.fireCommandsChanged();
     console.log(`[ExtensionHost] Unloaded: ${ext.manifest.name}`);
   }
 
@@ -114,6 +129,7 @@ export class ExtensionHost {
   private createContext(manifest: ExtensionManifest, registeredTools: Tool[]): ExtensionContext {
     const viewer = this.viewer;
     const commands = this.commands;
+    const fireCommandsChanged = () => this.fireCommandsChanged();
     const subscriptions: Disposable[] = [];
     const storagePrefix = `bim-ext-${manifest.id}-`;
 
@@ -160,6 +176,7 @@ export class ExtensionHost {
         registerCommand(cmd) {
           const fullId = `${manifest.id}.${cmd.id}`;
           commands.set(fullId, { ...cmd, id: fullId });
+          fireCommandsChanged();
         },
       },
 

@@ -10,17 +10,32 @@ Respond with EXACTLY this JSON format (no markdown, no code fences):
 {
   "name": "Short Extension Name",
   "description": "One paragraph describing what this extension does",
-  "code": "the clean TypeScript function body that recreates the operations"
+  "code": "the clean ESM module code"
 }
 
-The code should be a self-contained function body that uses the same API as the session:
-- doc, createWall, createColumn, createFloor, createWindow, createDoor, THREE
-- wallTypeId, columnTypeId, windowTypeId, doorTypeId
-- textureRenderer (for photorealistic rendering: await textureRenderer.render(prompt?), textureRenderer.discard(), textureRenderer.download(filename?))
-- Wrap BIM operations in doc.transaction()
+The code must be an ESM module with activate/deactivate exports. The activate function receives a context (ctx) with:
+- ctx.doc — BimDocument (add, update, remove, contracts, transaction)
+- ctx.editor.registerCommand(cmd) — register { id, label, handler }
+- ctx.ui.showNotification(message)
+
+Wrap the BIM operations inside a command handler so users can trigger it from the toolbar:
+
+export function activate(ctx) {
+  ctx.editor.registerCommand({
+    id: "run",
+    label: "Extension Name",
+    handler() {
+      ctx.doc.transaction(() => { /* BIM operations */ });
+    }
+  });
+}
+export function deactivate() {}
+
+Rules:
 - Make it parameterizable where it makes sense (e.g., grid size, spacing)
-- Remove any hardcoded UUIDs — use the typeId variables instead
-- If the session includes texture rendering, the code must be async`;
+- Remove any hardcoded UUIDs — use crypto.randomUUID()
+- If the handler uses async operations, make it async
+- No import statements`;
 
 export interface BundleResult {
   name: string;
@@ -52,15 +67,24 @@ export async function bundleSession(
 
   // Publish to extension server
   try {
+    const extId = `ai-generated.${parsed.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+    const manifest = {
+      id: extId,
+      name: parsed.name,
+      version: "1.0.0",
+      description: parsed.description,
+      author: "AI Builder",
+      main: "bundle.js",
+      contributes: {
+        commands: [{ id: "run", label: parsed.name }],
+      },
+    };
+    const formData = new FormData();
+    formData.append("manifest", JSON.stringify(manifest));
+    formData.append("bundle", new Blob([parsed.code], { type: "application/javascript" }), "bundle.js");
     const res = await fetch(STORE_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: parsed.name,
-        description: parsed.description,
-        code: parsed.code,
-        author: "AI Builder",
-      }),
+      body: formData,
     });
     if (!res.ok) {
       console.warn("Extension store unavailable, extension saved locally only");

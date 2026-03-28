@@ -125,7 +125,15 @@
       "Bash(node -e \":*)",
       "Bash(ls /Users/dmk/Projects/private/authoring/packages/viewer/vitest.config*)",
       "Bash(ls /Users/dmk/Projects/private/authoring/vitest.config*)",
-      "Bash(ls /Users/dmk/Projects/private/authoring/vitest.workspace*)"
+      "Bash(ls /Users/dmk/Projects/private/authoring/vitest.workspace*)",
+      "Bash(find /Users/dmk/Projects/private/authoring -maxdepth 3 -name .env* -o -name config.* -o -name tsconfig* -o -name *.env*)",
+      "Bash(find /Users/dmk/Projects/private/authoring -type f \\\\\\(-name *.ts -o -name *.js \\\\\\) -path */server/* -o -name server* -o -name *backend*)",
+      "Bash(for pkg:*)",
+      "Bash(do echo:*)",
+      "Read(//Users/dmk/Projects/private/authoring/**)",
+      "Bash(done)",
+      "Bash(find /Users/dmk/Projects/private/authoring -name *.sql -o -name *migrations* -o -name *prisma* -o -name *drizzle*)",
+      "Bash(find /Users/dmk/Projects/private/authoring -name .env* -o -name *.env)"
     ]
   }
 }

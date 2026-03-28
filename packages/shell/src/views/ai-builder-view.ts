@@ -326,6 +326,12 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
               readme: documentation,
               contributes: {
                 elements: summary.elementKinds.map((k: string) => ({ kind: k, entrypoint: "bundle.js" })),
+                commands: [
+                  {
+                    id: "run",
+                    label: summary.name,
+                  },
+                ],
                 wiki: [
                   {
                     path: `${summary.suggestedId}/overview`,
@@ -768,12 +774,20 @@ The activate function receives a context object with:
 - ctx.scene — THREE.Scene
 - ctx.editor.registerElement(def) — register ElementTypeDefinition
 - ctx.editor.registerTool(tool, descriptor) — register interactive tool
+- ctx.editor.registerCommand(cmd) — register a command button { id, label, handler }
 - ctx.ui.showNotification(message) — show user notification
 
-Generate a self-contained ESM module:
+Generate a self-contained ESM module that registers a COMMAND. The command handler runs the session code when the user clicks the button in the toolbar.
+
 \`\`\`javascript
 export function activate(ctx) {
-  // Replay the session's actions using ctx
+  ctx.editor.registerCommand({
+    id: "run",
+    label: "My Extension Name",  // use the actual extension name
+    handler() {
+      // Replay the session's actions here using ctx.doc, ctx.scene, etc.
+    }
+  });
 }
 
 export function deactivate() {
@@ -785,7 +799,10 @@ Rules:
 1. No import statements — everything is available via ctx
 2. Use crypto.randomUUID() for IDs
 3. Plain JavaScript only, no TypeScript
-4. Wrap in a single \`\`\`javascript code block`;
+4. Wrap in a single \`\`\`javascript code block
+5. ALL session replay code goes INSIDE the command handler, NOT directly in activate()
+6. The command label should be a short, descriptive action name
+7. If the handler is async (e.g. uses textureGenerator), make it async`;
 }
 
 // ── Claude API integration ──────────────────────────────────────────
@@ -892,7 +909,9 @@ async function generateExtensionModule(
     `Extension name: ${summary.name}\n` +
     `Description: ${summary.description}\n\n` +
     `Session code to wrap into an extension module:\n\`\`\`javascript\n${codeBlocks}\n\`\`\`\n\n` +
-    `Combine all the above into a single activate(ctx) function that replays these actions. ` +
+    `Wrap all the above inside a ctx.editor.registerCommand() call in activate(). ` +
+    `The command id should be "run" and the label should be "${summary.name}". ` +
+    `The command handler function should contain the session replay code. ` +
     `Replace any "viewer" references with "ctx" (ctx.doc, ctx.editor, ctx.scene, etc). ` +
     `Remember: ctx.editor.registerElement(def) instead of viewer.registerElement(def).`;
 

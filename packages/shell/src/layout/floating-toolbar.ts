@@ -1,13 +1,17 @@
 import type { ToolDescriptor, ViewerInstance } from "@bim-ide/viewer";
+import type { ExtensionHost } from "../services/extension-host";
 
 export class FloatingToolbar {
   readonly element: HTMLElement;
   private buttons = new Map<string, HTMLButtonElement>();
   private viewer: ViewerInstance;
+  private extensionHost: ExtensionHost;
   private toolSection: HTMLElement;
+  private commandSection: HTMLElement;
 
-  constructor(viewer: ViewerInstance) {
+  constructor(viewer: ViewerInstance, extensionHost: ExtensionHost) {
     this.viewer = viewer;
+    this.extensionHost = extensionHost;
     this.element = document.createElement("div");
     this.element.className = "floating-toolbar";
 
@@ -17,6 +21,13 @@ export class FloatingToolbar {
     this.element.appendChild(this.toolSection);
 
     this.rebuildToolButtons();
+
+    // Extension command buttons section
+    this.commandSection = document.createElement("span");
+    this.commandSection.style.display = "contents";
+    this.element.appendChild(this.commandSection);
+    this.rebuildCommandButtons();
+    extensionHost.onCommandsChanged(() => this.rebuildCommandButtons());
 
     // Separator before undo/redo
     const sep2 = document.createElement("div");
@@ -141,5 +152,25 @@ export class FloatingToolbar {
     });
     this.toolSection.appendChild(btn);
     this.buttons.set(desc.tool.name, btn);
+  }
+
+  private rebuildCommandButtons() {
+    this.commandSection.innerHTML = "";
+    const commands = this.extensionHost.getCommands();
+    if (commands.length === 0) return;
+
+    const sep = document.createElement("div");
+    sep.className = "separator";
+    this.commandSection.appendChild(sep);
+
+    for (const cmd of commands) {
+      const btn = document.createElement("button");
+      btn.textContent = cmd.label;
+      btn.title = cmd.id;
+      btn.addEventListener("click", () => {
+        this.extensionHost.executeCommand(cmd.id);
+      });
+      this.commandSection.appendChild(btn);
+    }
   }
 }

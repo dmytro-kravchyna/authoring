@@ -79,7 +79,7 @@ async function bootstrap() {
   const extensionHost = new ExtensionHost(viewer);
 
   // ── Floating toolbar ──
-  const toolbar = new FloatingToolbar(viewer);
+  const toolbar = new FloatingToolbar(viewer, extensionHost);
   editorArea.appendChild(toolbar.element);
 
   // Wire tool name to status bar and toolbar highlight (after toolbar creation)
