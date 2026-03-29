@@ -153,7 +153,8 @@
       "Bash(ls /Users/dmk/Projects/private/authoring/packages/shell/vite.config.*)",
       "Bash(ls /Users/dmk/Projects/private/authoring/packages/viewer/*.html /Users/dmk/Projects/private/authoring/packages/shell/*.html)",
       "Bash(find /Users/dmk/Projects/private/authoring -name .env* -o -name *.env*)",
-      "Bash(lsof -ti:5173)"
+      "Bash(lsof -ti:5173)",
+      "Bash(node src/db/seed.js)"
     ],
     "additionalDirectories": [
       "/tmp"

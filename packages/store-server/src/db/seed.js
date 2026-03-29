@@ -272,10 +272,13 @@ function registerCommands(context) {
     category: "structural",
     keybinding: "Ctrl+Shift+M",
     handler() {
-      const sel = context.doc.getSelection?.();
-      if (!sel || sel.kind !== "steelBeam") return;
+      const sel = context.selection.getFirst();
+      if (!sel || sel.kind !== "steelBeam") {
+        context.ui.showNotification("Select a steel beam first", "warning");
+        return;
+      }
       context.doc.transaction(() => {
-        context.doc.update({ ...sel, startX: sel.endX, startZ: sel.endZ, endX: sel.startX, endZ: sel.startZ });
+        context.doc.update(sel.id, { startX: sel.endX, startZ: sel.endZ, endX: sel.startX, endZ: sel.startZ });
       });
     },
   });
@@ -286,15 +289,17 @@ function registerCommands(context) {
     category: "structural",
     keybinding: "Ctrl+Shift+R",
     handler() {
-      const sel = context.doc.getSelection?.();
-      if (!sel || sel.kind !== "steelBeam") return;
+      const sel = context.selection.getFirst();
+      if (!sel || sel.kind !== "steelBeam") {
+        context.ui.showNotification("Select a steel beam first", "warning");
+        return;
+      }
       const cx = (sel.startX + sel.endX) / 2;
       const cz = (sel.startZ + sel.endZ) / 2;
       const dx = sel.endX - sel.startX;
       const dz = sel.endZ - sel.startZ;
       context.doc.transaction(() => {
-        context.doc.update({
-          ...sel,
+        context.doc.update(sel.id, {
           startX: cx - dz / 2, startZ: cz + dx / 2,
           endX:   cx + dz / 2, endZ:   cz - dx / 2,
         });
@@ -715,8 +720,7 @@ function registerAutoSizeCommand(context) {
           const aspect = 1.33; // width/height ratio
           const h = Math.sqrt(area / aspect);
           const w = area / h;
-          context.doc.update({
-            ...duct,
+          context.doc.update(duct.id, {
             width: Math.round(w * 100) / 100,
             height: Math.round(h * 100) / 100,
           });

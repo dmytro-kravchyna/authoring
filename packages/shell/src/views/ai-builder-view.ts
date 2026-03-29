@@ -278,7 +278,14 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
       indicator.remove();
 
       if (response.error) {
-        addAssistantMessage(`Error: ${response.error}`);
+        if (response.error.includes("401") || response.error.includes("authentication")) {
+          addAssistantMessage(
+            `**Invalid API key.** Your Anthropic API key was rejected.\n\n` +
+            `Click "Change API key" above to enter a valid key.`
+          );
+        } else {
+          addAssistantMessage(`Error: ${response.error}`);
+        }
         if (session.commands.length === 0) draftPanel.hide();
         return;
       }
@@ -1234,7 +1241,26 @@ Rules:
 8. The descriptor for registerTool needs: { label: string, category: "create" | "edit" }
 9. Commands need: { id, label, handler() }
 10. For edit tools that operate on selected elements, use ctx.selection (getAll, getIds, getFirst, clear)
-11. Replace viewer.selection references with ctx.selection in bundled code`;
+11. Replace viewer.selection references with ctx.selection in bundled code
+12. IMPORTANT: The session code may reference variables like wallTypeId, columnTypeId, etc. These are NOT available in the extension context. You MUST resolve them at the top of activate() by scanning ctx.doc.contracts for type contracts. Use this pattern:
+\`\`\`
+const typeIds = {};
+for (const [id, c] of ctx.doc.contracts) {
+  if (c.kind && c.kind.endsWith("Type")) {
+    const varName = c.kind.replace(/Type$/, "") + "TypeId";
+    if (!typeIds[varName]) typeIds[varName] = id;
+  }
+}
+const wallTypeId = typeIds.wallTypeId;
+const columnTypeId = typeIds.columnTypeId;
+const windowTypeId = typeIds.windowTypeId;
+const doorTypeId = typeIds.doorTypeId;
+const beamTypeId = typeIds.beamTypeId;
+const furnitureTypeId = typeIds.furnitureTypeId;
+const railingTypeId = typeIds.railingTypeId;
+const stairTypeId = typeIds.stairTypeId;
+const terrainTypeId = typeIds.terrainTypeId;
+\`\`\``;
 }
 
 // ── Claude API integration ──────────────────────────────────────────
@@ -1385,7 +1411,45 @@ async function generateExtensionModule(
   const text = await callClaudeWithSystemPrompt(apiKey, getExtensionGeneratorPrompt(), content);
   const code = extractCode(text);
   if (!code) throw new Error("Could not extract extension code");
-  return code;
+  return injectTypeIdResolution(code);
+}
+
+/**
+ * If the generated extension code references *TypeId variables (e.g. wallTypeId)
+ * but doesn't resolve them from ctx.doc.contracts, inject the resolution block
+ * at the top of the activate() function body.
+ */
+function injectTypeIdResolution(code: string): string {
+  // Detect which *TypeId variables are referenced
+  const typeIdRefs = code.match(/\b\w+TypeId\b/g);
+  if (!typeIdRefs) return code; // no type ID references
+
+  // If the code already resolves types from ctx.doc.contracts, skip injection
+  if (code.includes("ctx.doc.contracts") || code.includes("context.doc.contracts")) {
+    return code;
+  }
+
+  const uniqueRefs = [...new Set(typeIdRefs)];
+  const declarations = uniqueRefs.map(name => `  const ${name} = typeIds.${name};`).join("\n");
+
+  const resolutionBlock =
+    `  // Auto-resolve type IDs from the document\n` +
+    `  const typeIds = {};\n` +
+    `  for (const [id, c] of ctx.doc.contracts) {\n` +
+    `    if (c.kind && c.kind.endsWith("Type")) {\n` +
+    `      const varName = c.kind.replace(/Type$/, "") + "TypeId";\n` +
+    `      if (!typeIds[varName]) typeIds[varName] = id;\n` +
+    `    }\n` +
+    `  }\n` +
+    declarations + "\n";
+
+  // Inject after `export function activate(ctx) {`
+  const injected = code.replace(
+    /(export\s+function\s+activate\s*\(\s*ctx\s*\)\s*\{)/,
+    `$1\n${resolutionBlock}`
+  );
+
+  return injected;
 }
 
 async function generateDocumentation(

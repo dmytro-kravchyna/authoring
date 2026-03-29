@@ -40,6 +40,9 @@ export async function sendMessage(
 
   if (!res.ok) {
     const body = await res.text();
+    if (res.status === 401) {
+      throw new Error("Invalid API key. Please update your Anthropic API key.");
+    }
     throw new Error(`Claude API error ${res.status}: ${body}`);
   }
 

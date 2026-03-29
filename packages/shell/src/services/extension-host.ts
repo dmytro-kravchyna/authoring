@@ -83,10 +83,11 @@ export class ExtensionHost {
       this.viewer.unregisterTool(tool);
     }
 
-    // Remove registered commands
-    if (ext.manifest.contributes?.commands) {
-      for (const cmd of ext.manifest.contributes.commands) {
-        this.commands.delete(`${ext.manifest.id}.${cmd.id}`);
+    // Remove registered commands (prefix-based: registerCommand keys are always `${manifest.id}.${cmd.id}`)
+    const prefix = `${ext.manifest.id}.`;
+    for (const key of [...this.commands.keys()]) {
+      if (key.startsWith(prefix)) {
+        this.commands.delete(key);
       }
     }
 

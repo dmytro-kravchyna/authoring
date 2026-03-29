@@ -211,7 +211,7 @@ export class SelectTool implements Tool {
     if (event.key === "Escape") {
       this.clearSelection();
     }
-    if (event.key === "Delete" && this.selectedContracts.size > 0) {
+    if ((event.key === "Delete" || event.key === "Backspace") && this.selectedContracts.size > 0) {
       const ids = [...this.selectedContracts.keys()];
       // Clean up handles
       for (const [, handles] of this.handlesMap) {
