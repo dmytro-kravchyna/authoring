@@ -297,7 +297,7 @@ export class AiChatTab {
       let errorMsg = "";
 
       if (code) {
-        const result = await execute(code, this.doc, this.textureRenderer, this.gisLayer, this.selectionApi);
+        const result = await execute(code, this.doc, this.textureRenderer, this.gisLayer, this.textureGenerator, this.selectionApi);
         success = result.success;
         errorMsg = result.error ?? "";
 

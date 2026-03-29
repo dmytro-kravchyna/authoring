@@ -37,7 +37,7 @@ async function main() {
     getFirst: () => viewer.selectTool.getSelectedContract(),
     clear: () => viewer.selectTool.clearSelection(),
   };
-  const aiTab = new AiChatTab(viewer.doc, viewer.textureRenderer, viewer.gisLayer, viewer, selectionApi);
+  const aiTab = new AiChatTab(viewer.doc, viewer.textureRenderer, viewer.textureGenerator, viewer.gisLayer, viewer, selectionApi);
   sidePanel.addTab("ai", "AI", () => {
     aiTab.render(sidePanel.content);
   });
