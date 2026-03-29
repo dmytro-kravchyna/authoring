@@ -144,6 +144,22 @@ export class ExtensionHost {
       get scene() {
         return viewer.scene;
       },
+      THREE,
+
+      raycast: {
+        ground(event: PointerEvent): [number, number, number] | null {
+          const hit = viewer.toolMgr.raycastGround(event);
+          return hit ? [hit.x, hit.y, hit.z] : null;
+        },
+        objects(event: PointerEvent, objects?: THREE.Object3D[]) {
+          const hits = viewer.toolMgr.raycastObjects(event, objects ?? viewer.scene.children);
+          return hits.map(h => ({
+            point: [h.point.x, h.point.y, h.point.z] as [number, number, number],
+            distance: h.distance,
+            object: h.object,
+          }));
+        },
+      },
 
       selection: {
         getAll() {
@@ -177,12 +193,21 @@ export class ExtensionHost {
           // Pad missing lifecycle methods with no-ops so ToolManager
           // doesn't crash on extension tools that omit optional handlers.
           const noop = () => {};
+          // Convert THREE.Vector3 intersection to [x,y,z] array format
+          // that AI-generated extension code expects (matches the conversion
+          // in loadGeneratedCode within ai-builder-view.ts).
+          const toArray = (v: THREE.Vector3 | null): [number, number, number] | null =>
+            v ? [v.x, v.y, v.z] : null;
           const safeTool = {
             ...tool,
             activate: tool.activate?.bind(tool) ?? noop,
             deactivate: tool.deactivate?.bind(tool) ?? noop,
-            onPointerDown: tool.onPointerDown?.bind(tool) ?? noop,
-            onPointerMove: tool.onPointerMove?.bind(tool) ?? noop,
+            onPointerDown: (event: PointerEvent, intersection: THREE.Vector3 | null) => {
+              (tool.onPointerDown ?? noop)(event, toArray(intersection) as any);
+            },
+            onPointerMove: (event: PointerEvent, intersection: THREE.Vector3 | null) => {
+              (tool.onPointerMove ?? noop)(event, toArray(intersection) as any);
+            },
             onPointerUp: tool.onPointerUp?.bind(tool) ?? noop,
             onKeyDown: tool.onKeyDown?.bind(tool) ?? noop,
           };

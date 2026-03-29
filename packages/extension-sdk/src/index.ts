@@ -114,9 +114,23 @@ export interface ExtensionContext {
   readonly registry: ElementRegistry;
   /** Access to the Three.js scene */
   readonly scene: THREE.Scene;
+  /** THREE.js module for creating geometry, materials, meshes, etc. */
+  readonly THREE: typeof THREE;
 
   /** Selection state — query and clear the current element selection */
   readonly selection: SelectionAPI;
+
+  /** Raycasting utilities for element picking */
+  readonly raycast: {
+    /** Raycast onto the active work plane, returns [x,y,z] or null */
+    ground(event: PointerEvent): [number, number, number] | null;
+    /** Raycast against scene objects, returns intersections with [x,y,z] points */
+    objects(event: PointerEvent, objects?: THREE.Object3D[]): Array<{
+      point: [number, number, number];
+      distance: number;
+      object: THREE.Object3D;
+    }>;
+  };
 
   /** Mutation APIs */
   readonly editor: {

@@ -31,6 +31,7 @@ import { RailingTool } from "./tools/railing-tool";
 import { StairTool } from "./tools/stair-tool";
 import { TerrainTool } from "./tools/terrain-tool";
 import { PasteTool } from "./tools/paste-tool";
+import { CornerJoinTool } from "./tools/corner-join-tool";
 import { wallElement } from "./elements/wall";
 import { windowElement } from "./elements/window";
 import { floorElement } from "./elements/floor";
@@ -293,7 +294,10 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
   const clipboard = new ModelClipboard();
   const pasteTool = new PasteTool(scene, doc, toolMgr, sync, registry, selectTool, clipboard);
 
-  const allTools: Tool[] = [wallTool, windowTool, doorTool, floorTool, columnTool, beamTool, furnitureTool, railingTool, stairTool, terrainTool, selectTool, moveTool, rotateTool, pasteTool];
+  // Corner Join (Trim/Extend)
+  const cornerJoinTool = new CornerJoinTool(scene, doc, fragMgr, toolMgr, camera, renderer.domElement);
+
+  const allTools: Tool[] = [wallTool, windowTool, doorTool, floorTool, columnTool, beamTool, furnitureTool, railingTool, stairTool, terrainTool, selectTool, moveTool, rotateTool, pasteTool, cornerJoinTool];
 
   // --- Tool descriptors ---
   const onToolsChanged = new TypedEvent<void>();
@@ -311,6 +315,7 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
     { tool: selectTool, label: "Select", category: "edit" },
     { tool: moveTool, label: "Move", category: "edit" },
     { tool: rotateTool, label: "Rotate", category: "edit" },
+    { tool: cornerJoinTool, label: "Corner Join", category: "edit" },
   ];
 
   // --- UI Panels ---

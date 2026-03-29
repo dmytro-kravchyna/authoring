@@ -186,9 +186,10 @@ function createMockManager() {
   };
   const mockDeltaModel = mockDelta;
 
-  const modelsList = new Map<string, any>();
+  const modelsList = new Map<string, any>() as Map<string, any> & { onItemSet: { add: ReturnType<typeof vi.fn> } };
   modelsList.set("revit-authoring", mockBaseModel);
   modelsList.set("delta-1", mockDeltaModel);
+  (modelsList as any).onItemSet = { add: vi.fn() };
 
   let requestCount = 0;
 
@@ -203,7 +204,13 @@ function createMockManager() {
       selectRequest: vi.fn(async () => {}),
     },
     fragments: {
-      models: { list: modelsList },
+      models: {
+        list: modelsList,
+        materials: {
+          list: { onItemSet: { add: vi.fn() }, onItemDeleted: { add: vi.fn() } },
+        },
+        tiles: { onItemSet: { add: vi.fn() } },
+      },
       update: vi.fn(async () => {}),
     },
     update: vi.fn(async () => {}),

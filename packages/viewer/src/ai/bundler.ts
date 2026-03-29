@@ -25,8 +25,10 @@ The code should be a self-contained activate(ctx) function body that:
 - For "tool" steps: wraps the tool lifecycle functions into a Tool object and registers via ctx.editor.registerTool(tool, { label, category })
 - For "command" steps: registers via ctx.editor.registerCommand({ id, label, handler })
 - For "action" steps: replays the BIM operations using ctx.doc
-- Uses the same API as the session: createWall, createColumn, createFloor, createWindow, createDoor, THREE
-- wallTypeId, columnTypeId, windowTypeId, doorTypeId
+- Uses ctx.doc for all document operations (add, update, remove, transaction, contracts)
+- Uses ctx.THREE for THREE.js constructors (Vector3, Mesh, BoxGeometry, etc.)
+- Uses ctx.raycast.ground(event) and ctx.raycast.objects(event) for element picking
+- wallTypeId, columnTypeId, windowTypeId, doorTypeId (resolved from ctx.doc.contracts)
 - textureRenderer (for photorealistic rendering: await textureRenderer.render(prompt?), textureRenderer.discard(), textureRenderer.download(filename?))
 - ctx.selection for reading/clearing the current element selection:
   - ctx.selection.getAll() — all selected contracts
@@ -44,8 +46,8 @@ const tool = {
   name: "my-tool",
   activate() { /* setup */ },
   deactivate() { /* cleanup */ },
-  onPointerDown(event, point) { /* place element */ },
-  onPointerMove(event, point) { /* preview */ },
+  onPointerDown(event, point) { /* point is [x,y,z] array or null */ },
+  onPointerMove(event, point) { /* point is [x,y,z] array or null */ },
   onPointerUp(event) { /* finalize */ },
   onKeyDown(event) { /* shortcuts */ },
 };
@@ -63,6 +65,7 @@ const editTool = {
   },
   deactivate() { /* cleanup */ },
   onPointerDown(event, point) {
+    // point is [x,y,z] array or null
     const selected = ctx.selection.getAll();
     ctx.doc.transaction(() => {
       for (const contract of selected) {
@@ -70,7 +73,7 @@ const editTool = {
       }
     });
   },
-  onPointerMove(event, point) { /* preview */ },
+  onPointerMove(event, point) { /* point is [x,y,z] array or null */ },
   onPointerUp(event) { /* finalize */ },
   onKeyDown(event) { /* shortcuts */ },
 };

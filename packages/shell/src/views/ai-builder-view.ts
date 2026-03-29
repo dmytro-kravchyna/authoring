@@ -1202,11 +1202,15 @@ The activate function receives a context object with:
 - ctx.doc — BimDocument (same API as viewer.doc: add, update, remove, contracts, transaction)
 - ctx.registry — ElementRegistry (register new element kinds)
 - ctx.scene — THREE.Scene
+- ctx.THREE — the THREE.js module (Vector3, Mesh, BoxGeometry, MeshBasicMaterial, etc.)
 - ctx.selection — Selection API:
   - ctx.selection.getAll() — all currently selected contracts
   - ctx.selection.getIds() — IDs of selected contracts
   - ctx.selection.getFirst() — first selected contract or null
   - ctx.selection.clear() — clear selection
+- ctx.raycast — Raycasting utilities for element picking:
+  - ctx.raycast.ground(event) — raycast onto the active work plane, returns [x,y,z] or null
+  - ctx.raycast.objects(event, objects?) — raycast against scene objects, returns array of { point: [x,y,z], distance, object }
 - ctx.editor.registerElement(def) — register ElementTypeDefinition
 - ctx.editor.registerTool(tool, descriptor) — register interactive tool
 - ctx.editor.registerCommand(cmd) — register a command button { id, label, handler }
@@ -1231,13 +1235,13 @@ export function deactivate() {
 \`\`\`
 
 Rules:
-1. No import statements — everything is available via ctx
+1. No import statements — everything is available via ctx (use ctx.THREE for THREE.js constructors)
 2. Use crypto.randomUUID() for IDs
 3. Plain JavaScript only, no TypeScript
 4. Wrap in a single \`\`\`javascript code block
 5. If the session contains tool definitions, convert them to ctx.editor.registerTool() calls
 6. If the session contains command definitions, convert them to ctx.editor.registerCommand() calls
-7. Tool objects need: name, activate, deactivate, onPointerDown(event, point), onPointerMove(event, point), onPointerUp(event), onKeyDown(event)
+7. Tool objects need: name, activate, deactivate, onPointerDown(event, point), onPointerMove(event, point), onPointerUp(event), onKeyDown(event). The point parameter is [x,y,z] array or null.
 8. The descriptor for registerTool needs: { label: string, category: "create" | "edit" }
 9. Commands need: { id, label, handler() }
 10. For edit tools that operate on selected elements, use ctx.selection (getAll, getIds, getFirst, clear)
