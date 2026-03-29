@@ -513,6 +513,7 @@ body {
   padding: 8px 10px;
   border-radius: 6px;
   word-break: break-word;
+  flex-shrink: 0;
 }
 
 .ai-chat-msg-user {
@@ -526,6 +527,11 @@ body {
   background: #333;
   border: 1px solid #444;
   max-width: 95%;
+  min-width: 0;
+}
+
+.ai-chat-msg-assistant > div {
+  white-space: pre-wrap;
 }
 
 .ai-chat-msg-system {
@@ -544,7 +550,9 @@ body {
   overflow-x: auto;
   margin-top: 4px;
   white-space: pre-wrap;
+  word-break: break-all;
   color: #d4d4d4;
+  max-width: 100%;
 }
 
 .ai-chat-input-area {

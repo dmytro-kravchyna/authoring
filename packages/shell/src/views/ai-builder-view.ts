@@ -415,9 +415,8 @@ function renderChat(container: HTMLElement, viewer: ViewerInstance, apiKey: stri
 
       // Step 2b: Show documentation preview
       const docsPreview = document.createElement("div");
-      docsPreview.className = "ai-chat-message assistant";
-      docsPreview.style.cssText = "max-height: 300px; overflow-y: auto; border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 12px; margin: 4px 12px;";
-      docsPreview.innerHTML = `<div style="font-size: 11px; text-transform: uppercase; color: var(--vscode-descriptionForeground); margin-bottom: 8px;">Generated Documentation</div>${marked(documentation)}`;
+      docsPreview.className = "ai-chat-message assistant docs-preview";
+      docsPreview.innerHTML = `<div class="docs-preview-label">Generated Documentation</div>${marked(documentation)}`;
       messagesArea.appendChild(docsPreview);
       messagesArea.scrollTop = messagesArea.scrollHeight;
 
