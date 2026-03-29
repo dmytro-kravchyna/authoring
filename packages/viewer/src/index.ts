@@ -574,6 +574,7 @@ export { MaterialsTab } from "./ui/materials-tab";
 export { PropertiesPanel } from "./ui/properties";
 
 // AI / GIS
+export { setGeminiEnvKey } from "./ai/ai-config";
 export { TextureRenderer } from "./ai/texture-renderer";
 export { TextureGenerator } from "./ai/texture-generator";
 export { GisLayer3d } from "./gis/gis-layer-3d";

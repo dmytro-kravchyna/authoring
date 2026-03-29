@@ -7,7 +7,7 @@
 import "@vscode/codicons/dist/codicon.css";
 // Import viewer component styles (types tab, properties panel, etc.)
 import "../../viewer/src/ui/styles.css";
-import { createViewer, type ViewerInstance } from "@bim-ide/viewer";
+import { createViewer, setGeminiEnvKey, type ViewerInstance } from "@bim-ide/viewer";
 import { ActivityBar } from "./layout/activity-bar";
 import { Sidebar } from "./layout/sidebar";
 import { FloatingToolbar } from "./layout/floating-toolbar";
@@ -74,6 +74,10 @@ async function bootstrap() {
 
   // ── Create viewer ──
   const viewer = await createViewer(viewerContainer);
+
+  // Inject Gemini API key from environment
+  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (geminiKey) setGeminiEnvKey(geminiKey);
 
   // Wire status
   viewer.onStatusChanged = (msg) => statusBar.updateItem("status", msg);

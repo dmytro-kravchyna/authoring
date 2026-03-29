@@ -1,8 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import * as THREE from "three";
-
-const GEMINI_KEY_STORAGE = "bim-ai-gemini-key";
-const DEFAULT_GEMINI_KEY = "AIzaSyDxWtzW3jd3vtGlY90ag99A5HfA2yYxQMg";
+import { resolveGeminiKey, getUserGeminiKey, setUserGeminiKey } from "./ai-config";
 
 const DEFAULT_PROMPT =
   "Transform the provided screenshot of a BIM model into a the style of a photorealistic picture of an architecture project similar to the architecture magazines. Preserve the original composition but render all elements as if they were a real picture of a building.";
@@ -18,16 +16,17 @@ export class TextureRenderer {
   ) {}
 
   static getGeminiKey(): string | null {
-    return localStorage.getItem(GEMINI_KEY_STORAGE);
+    return getUserGeminiKey();
   }
 
   static setGeminiKey(key: string): void {
-    localStorage.setItem(GEMINI_KEY_STORAGE, key);
+    setUserGeminiKey(key);
   }
 
   /** Capture current scene, send to Gemini for photorealistic transformation, and display as overlay. */
   async render(customPrompt?: string): Promise<string | null> {
-    const apiKey = TextureRenderer.getGeminiKey() ?? DEFAULT_GEMINI_KEY;
+    const apiKey = resolveGeminiKey();
+    if (!apiKey) throw new Error("No Gemini API key configured");
 
     // Force a fresh render and capture
     this.renderer.render(this.scene, this.camera);

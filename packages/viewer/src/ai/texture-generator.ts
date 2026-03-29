@@ -1,7 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-
-const GEMINI_KEY_STORAGE = "bim-ai-gemini-key";
-const DEFAULT_GEMINI_KEY = "AIzaSyDxWtzW3jd3vtGlY90ag99A5HfA2yYxQMg";
+import { resolveGeminiKey } from "./ai-config";
 
 const TEXTURE_PROMPT_PREFIX =
   "Generate a seamless tileable texture for use as a material in 3D architectural rendering. " +
@@ -12,7 +10,9 @@ export class TextureGenerator {
   private cache = new Map<string, string>();
 
   private getApiKey(): string {
-    return localStorage.getItem(GEMINI_KEY_STORAGE) ?? DEFAULT_GEMINI_KEY;
+    const key = resolveGeminiKey();
+    if (!key) throw new Error("No Gemini API key configured");
+    return key;
   }
 
   /** Generate a tileable texture image from a text prompt. Returns base64 data URL. */

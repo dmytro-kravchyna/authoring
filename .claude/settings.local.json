@@ -151,7 +151,9 @@
       "Bash(ls -la /Users/dmk/Projects/private/authoring/packages/viewer/src/elements/terrain*.ts)",
       "Bash(ls /Users/dmk/Projects/private/authoring/packages/viewer/vite.config.*)",
       "Bash(ls /Users/dmk/Projects/private/authoring/packages/shell/vite.config.*)",
-      "Bash(ls /Users/dmk/Projects/private/authoring/packages/viewer/*.html /Users/dmk/Projects/private/authoring/packages/shell/*.html)"
+      "Bash(ls /Users/dmk/Projects/private/authoring/packages/viewer/*.html /Users/dmk/Projects/private/authoring/packages/shell/*.html)",
+      "Bash(find /Users/dmk/Projects/private/authoring -name .env* -o -name *.env*)",
+      "Bash(lsof -ti:5173)"
     ],
     "additionalDirectories": [
       "/tmp"
