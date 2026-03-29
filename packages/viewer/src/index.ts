@@ -361,17 +361,18 @@ export async function createViewer(container: HTMLElement): Promise<ViewerInstan
   // Global keyboard shortcuts
   const keyHandler = (e: KeyboardEvent) => {
     if (!(e.ctrlKey || e.metaKey)) return;
-    if (e.key === "z" && !e.shiftKey) {
+    const key = e.key.toLowerCase();
+    if (key === "z" && !e.shiftKey) {
       e.preventDefault();
       undoMgr.undo();
-    } else if (e.key === "y" || (e.key === "z" && e.shiftKey)) {
+    } else if (key === "y" || (key === "z" && e.shiftKey)) {
       e.preventDefault();
       undoMgr.redo();
-    } else if (e.key === "c") {
+    } else if (key === "c") {
       e.preventDefault();
       const selected = selectTool.getSelectedContractsAll();
       if (selected.length > 0) clipboard.copy(selected, doc, registry);
-    } else if (e.key === "v") {
+    } else if (key === "v") {
       e.preventDefault();
       if (clipboard.hasContent) toolMgr.setTool(pasteTool);
     }
